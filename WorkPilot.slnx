@@ -12,4 +12,7 @@
     <Project Path="src/WorkPilot.Web/WorkPilot.Web.csproj" />
     <Project Path="src/WorkPilot.Workers/WorkPilot.Workers.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WorkPilot.Api.Tests/WorkPilot.Api.Tests.csproj" />
+  </Folder>
 </Solution>

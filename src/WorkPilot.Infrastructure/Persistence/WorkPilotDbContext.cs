@@ -23,6 +23,13 @@ public class WorkPilotDbContext(DbContextOptions<WorkPilotDbContext> options) : 
     {
         base.OnModelCreating(modelBuilder);
 
+        // Without this, EF's tables land in Postgres's default `public`
+        // schema, the one PostgREST exposes by default once Kong/PostgREST
+        // are added (docs/specs/0001-stack-architecture.md defers them, but
+        // the product schema still needs to be separate from day one, before
+        // the real 30+ entity data model lands here).
+        modelBuilder.HasDefaultSchema("app");
+
         modelBuilder.Entity<ScaffoldPing>(entity =>
         {
             entity.ToTable("scaffold_pings");

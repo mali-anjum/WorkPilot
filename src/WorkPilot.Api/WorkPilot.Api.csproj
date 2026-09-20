@@ -17,6 +17,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Lets WorkPilot.Api.Tests use WebApplicationFactory<Program> against
+         the top-level statements' internal Program class. -->
+    <InternalsVisibleTo Include="WorkPilot.Api.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\WorkPilot.Application\WorkPilot.Application.csproj" />
     <ProjectReference Include="..\WorkPilot.Infrastructure\WorkPilot.Infrastructure.csproj" />
     <ProjectReference Include="..\WorkPilot.Workers\WorkPilot.Workers.csproj" />
