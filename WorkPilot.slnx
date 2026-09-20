@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WorkPilot.AI/WorkPilot.AI.csproj" />
+    <Project Path="src/WorkPilot.Api/WorkPilot.Api.csproj" />
+    <Project Path="src/WorkPilot.AppHost/WorkPilot.AppHost.csproj" />
+    <Project Path="src/WorkPilot.Application/WorkPilot.Application.csproj" />
+    <Project Path="src/WorkPilot.Contracts/WorkPilot.Contracts.csproj" />
+    <Project Path="src/WorkPilot.Domain/WorkPilot.Domain.csproj" />
+    <Project Path="src/WorkPilot.Infrastructure/WorkPilot.Infrastructure.csproj" />
+    <Project Path="src/WorkPilot.ServiceDefaults/WorkPilot.ServiceDefaults.csproj" />
+    <Project Path="src/WorkPilot.Web.Client/WorkPilot.Web.Client.csproj" />
+    <Project Path="src/WorkPilot.Web/WorkPilot.Web.csproj" />
+    <Project Path="src/WorkPilot.Workers/WorkPilot.Workers.csproj" />
+  </Folder>
+</Solution>

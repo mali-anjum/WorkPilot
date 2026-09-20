@@ -1,0 +1,20 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+## Aspire
+**/apphost.appsettings.json
+.aspire/
+
+## Supabase self-hosted stack: never commit real secrets
+supabase/.env
+supabase/volumes/db/data/
+supabase/volumes/storage/
+
+## Editors / OS
+.idea/
+*.swp
+.DS_Store

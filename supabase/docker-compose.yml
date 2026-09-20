@@ -1,0 +1,107 @@
+version: "3.8"
+
+# Minimal self-hosted Supabase stack for WorkPilot, per
+# docs/specs/0001-stack-architecture.md ("Option 2"). This intentionally
+# covers only the minimum bar the scaffold task calls for:
+#   - Postgres (the single shared database; EF Core migrations from the
+#     .NET backend point at this same instance/database)
+#   - GoTrue (Supabase Auth)
+#   - Storage (resumes / cover letter files)
+#
+# Deferred (documented, not wired here — see docs/scope/foundation.md /
+# follow-ups): Kong (API gateway), PostgREST (auto REST API), Realtime,
+# Supabase Studio. Add these later if/when the Blazor client needs to talk
+# to Supabase directly over PostgREST/Realtime; the scaffold's acceptance
+# criteria only require Postgres + GoTrue + Storage reachable, with the .NET
+# backend reaching Postgres over the same connection string as EF Core.
+#
+# Based on Supabase's official self-hosting docker-compose reference:
+# https://supabase.com/docs/guides/self-hosting/docker
+
+services:
+  db:
+    image: supabase/postgres:17.6.1.136
+    container_name: workpilot-supabase-db
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXP: ${JWT_EXPIRY:-3600}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # Add to the image's own init-scripts/migrations (never mount over
+      # /docker-entrypoint-initdb.d itself: that replaces the whole
+      # directory and silently drops the image's built-in role/schema
+      # bootstrap, which is what auth/storage actually depend on).
+      - ./volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql
+      - ./volumes/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth:
+    image: supabase/gotrue:v2.196.0
+    container_name: workpilot-supabase-auth
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${GOTRUE_PORT:-9999}:9999"
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${SUPABASE_PUBLIC_URL:-http://localhost:8000}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+      GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:5000}
+      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS:-}
+      GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP:-false}
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: ${JWT_EXPIRY:-3600}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: ${ENABLE_EMAIL_SIGNUP:-true}
+      GOTRUE_MAILER_AUTOCONFIRM: ${ENABLE_EMAIL_AUTOCONFIRM:-true}
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-admin@example.com}
+      GOTRUE_SMTP_HOST: ${SMTP_HOST:-}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT:-587}
+      GOTRUE_SMTP_USER: ${SMTP_USER:-}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS:-}
+
+  storage:
+    image: supabase/storage-api:v1.74.0
+    container_name: workpilot-supabase-storage
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${STORAGE_PORT:-5001}:5000"
+    environment:
+      ANON_KEY: ${ANON_KEY}
+      SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      # No PostgREST in this minimal stack (deferred, see the header note);
+      # storage-api tolerates an unreachable POSTGREST_URL for non-RLS
+      # requests, which is all this scaffold's health check needs.
+      POSTGREST_URL: http://placeholder:3000
+      AUTH_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-postgres}
+      FILE_SIZE_LIMIT: 52428800
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: workpilot
+      REGION: local
+      GLOBAL_S3_BUCKET: workpilot
+    volumes:
+      - storage-data:/var/lib/storage
+
+volumes:
+  db-data:
+  storage-data:
