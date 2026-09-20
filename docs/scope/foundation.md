@@ -58,10 +58,12 @@ Getting there required fixing a few real bugs in the original scaffold, worth kn
 
 **Follow-up:** none outstanding for the scaffold itself. Deferred by design (documented in the compose file header): Kong, PostgREST, Realtime, Supabase Studio — add if/when the Blazor client needs to talk to Supabase directly.
 
-### 2. Coding standards & tooling
+### 2. Coding standards & tooling · done
 Capture conventions (lint, format, commit hooks, test runner) from the real scaffolded project.
 **Done when:** root `AGENTS.md` reflects the real stack, and lint/format/pre-commit run clean.
 - [x] Capture conventions + tooling: `/audit`
+
+`/develop` (2026-09-21): wired `.editorconfig`, `dotnet format WorkPilot.slnx --verify-no-changes` passes clean, and a format only pre-commit hook (`.githooks/pre-commit`, `git config core.hooksPath .githooks`) runs it on staged `.cs` files. Code in `.editorconfig`, `.githooks/`.
 
 ### 3. Data model · needs a decision
 Core entities from the product spec: Users, Profiles, Skills, Experiences, Education, Resumes/Versions, CoverLetters/Versions, Jobs, JobSources, JobSnapshots, JobMatches, JobApplications, ApplicationAnswers, ApplicationEvents, Universities, Programs, Professors, ResearchAreas, Scholarships, OutreachContacts, OutreachMessages, EmailThreads, FollowUps, Tasks, CalendarEvents, AgentRuns, AgentSteps, ToolCalls, Approvals, AuditLogs, Workflows, WorkflowSteps, WorkflowEvents, Integrations, OAuthConnections, Notifications.
