@@ -6,13 +6,26 @@ Everything later features stand on: the stack, the shared data model, the design
 .NET Aspire modular monolith (Blazor Web App, Auto render mode, ASP.NET Core backend, EF Core) sharing one self hosted Supabase Postgres database (Supabase owns auth/storage/simple CRUD, the .NET backend owns the Agent/workflows/approvals/browser automation), Hangfire for durable jobs, Playwright for browser automation, Microsoft.Extensions.AI for the provider abstraction, all self hosted on one VPS via Docker Compose.
 **Done when:** the stack is recorded in a spec, the empty scaffold boots locally (`dotnet build` + `aspire run`), and the modular monolith module boundaries (Identity, Profile, Jobs, Applications, Universities, Outreach, Calendar, Tasks, Agent, Approvals, Integrations, Notifications, Audit) are reflected in the folder structure.
 - [x] Decide the stack (spec): `/architect stack & architecture`
-- [ ] Build it: `/develop stack & architecture`
-   - [ ] Scaffold the .NET Aspire solution (AppHost, Web, Application, Domain, Infrastructure, Workers, Contracts, AI projects) (AC-1, AC-3, AC-4)
-   - [ ] Stand up self hosted Supabase (Postgres, GoTrue, Storage) via Docker Compose and connect EF Core to the same database (AC-2, AC-5)
-   - [ ] Wire Hangfire against the shared Postgres database and confirm its dashboard (AC-6)
+- [x] Build it: `/develop stack & architecture`
+   - [x] Scaffold the .NET Aspire solution (AppHost, Web, Application, Domain, Infrastructure, Workers, Contracts, AI projects) (AC-1, AC-3, AC-4)
+   - [x] Stand up self hosted Supabase (Postgres, GoTrue, Storage) via Docker Compose and connect EF Core to the same database (AC-2, AC-5)
+   - [x] Wire Hangfire against the shared Postgres database and confirm its dashboard (AC-6)
 - [ ] Verify it: `/check verify stack & architecture`
 - [ ] Test it: `/test stack & architecture`
 Spec 0001 · code in `./`
+
+**Verified locally (2026-09-20):** `dotnet build` succeeds clean (0 warnings after pinning `Newtonsoft.Json` to 13.0.3 to clear a transitive advisory from Hangfire.Core). `dotnet run --project src/WorkPilot.AppHost` boots Postgres, the Api, and the Blazor Web project together; the Web home page returns HTTP 200. All 13 module folders (Identity, Profile, Jobs, Applications, Universities, Outreach, Calendar, Tasks, Agent, Approvals, Integrations, Notifications, Audit) are present under `WorkPilot.Domain/Modules` and `WorkPilot.Application/Modules`.
+
+The self hosted Supabase stack (`supabase/docker-compose.yml`: Postgres + GoTrue + Storage) is up and verified for real, not just against Aspire's own dev Postgres container: `docker compose up` in `supabase/` brings up all three healthy (GoTrue `/health` and Storage `/status` both HTTP 200), and running the Api standalone with its connection string pointed at that same Postgres (port 5433) shows EF Core and Hangfire both connecting to it live, with Hangfire's 12 tables created there and its dashboard returning HTTP 200.
+
+Getting there required fixing a few real bugs in the original scaffold, worth knowing about:
+- `supabase/.env` mounted a host folder over the image's own `/docker-entrypoint-initdb.d`, silently deleting the image's built-in role/schema bootstrap (the actual cause of every earlier failure). Fixed by mounting individual files into its `init-scripts/`/`migrations/` subdirectories instead, matching Supabase's own official compose.
+- The pinned image versions (Postgres 15.8.1.060 + GoTrue v2.164.0 + Storage v1.19.3) were a known-bad combination (GoTrue's migrations conflicted with the image's own). Repinned to the versions Supabase's own compose currently ships together: Postgres 17.6.1.136, GoTrue v2.196.0, Storage v1.74.0.
+- `supabase/.env`'s `ENABLE_EMAIL_AUTOCONFIRM=true` had a trailing inline `#` comment, which `.env` files don't support — it would have been read as part of the value. Moved to its own comment line.
+- `ANON_KEY`/`SERVICE_ROLE_KEY` were placeholder strings, not real JWTs; generated real ones signed with the `.env`'s `JWT_SECRET`.
+- Default `POSTGRES_PORT=5432` collided with a pre-existing local system Postgres on this machine; moved the stack to 5433.
+
+**Follow-up:** none outstanding for the scaffold itself. Deferred by design (documented in the compose file header): Kong, PostgREST, Realtime, Supabase Studio — add if/when the Blazor client needs to talk to Supabase directly.
 
 ### 2. Coding standards & tooling
 Capture conventions (lint, format, commit hooks, test runner) from the real scaffolded project.
