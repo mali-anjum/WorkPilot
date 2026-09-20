@@ -2,7 +2,7 @@
 
 Everything later features stand on: the stack, the shared data model, the design system, the app shell, and the agent orchestrator's core machinery (planner, policy, tools, workflow, approvals, verification). Nothing in Slice 1 starts until the walking skeleton here boots.
 
-### 1. Stack & architecture · in-progress
+### 1. Stack & architecture · done
 .NET Aspire modular monolith (Blazor Web App, Auto render mode, ASP.NET Core backend, EF Core) sharing one self hosted Supabase Postgres database (Supabase owns auth/storage/simple CRUD, the .NET backend owns the Agent/workflows/approvals/browser automation), Hangfire for durable jobs, Playwright for browser automation, Microsoft.Extensions.AI for the provider abstraction, all self hosted on one VPS via Docker Compose.
 **Done when:** the stack is recorded in a spec, the empty scaffold boots locally (`dotnet build` + `aspire run`), and the modular monolith module boundaries (Identity, Profile, Jobs, Applications, Universities, Outreach, Calendar, Tasks, Agent, Approvals, Integrations, Notifications, Audit) are reflected in the folder structure.
 - [x] Decide the stack (spec): `/architect stack & architecture`
@@ -10,9 +10,40 @@ Everything later features stand on: the stack, the shared data model, the design
    - [x] Scaffold the .NET Aspire solution (AppHost, Web, Application, Domain, Infrastructure, Workers, Contracts, AI projects) (AC-1, AC-3, AC-4)
    - [x] Stand up self hosted Supabase (Postgres, GoTrue, Storage) via Docker Compose and connect EF Core to the same database (AC-2, AC-5)
    - [x] Wire Hangfire against the shared Postgres database and confirm its dashboard (AC-6)
-- [ ] Verify it: `/check verify stack & architecture`
-- [ ] Test it: `/test stack & architecture`
+- [x] Verify it: `/check verify stack & architecture`
+- [x] Test it: `/test stack & architecture`
+- [x] Review it: `/check review stack & architecture`
 Spec 0001 · code in `./`
+
+**/check review (2026-09-20): Changes requested → fixed.** Reviewed by claude-opus-5 (author: sonnet). 1 blocker, 3 major, all fixed same session (full findings: `docs/reviews/2026-09-20-main.md`):
+- Blocker: a real Supabase Postgres password was hardcoded in `HealthDbEndpointTests.cs`. Removed; tests now require `WORKPILOTDB_CONNECTION` and fail loudly if unset. Confirmed the value never reached git history (the file was untracked), so no rotation was needed.
+- Major: `Database.MigrateAsync()` was running on every `/health/db` request (DDL on an unauthenticated GET). Moved to a one-shot call at startup.
+- Major: the `Hangfire:DisableServer` test-only flag failed silently toward "no background processing". Added an explicit startup warning log when it's set.
+- Major: EF Core's tables were landing in Postgres's shared `public` schema (what Supabase's future PostgREST layer exposes by default), contradicting the DbContext's own doc comment. Added `modelBuilder.HasDefaultSchema("app")` and regenerated the `InitialCreate` migration.
+Remaining minors/nits (env var test isolation, no negative test for dashboard auth, brittle JSON string assertions, centralizing package versions) are left for the "Coding standards & tooling" scope item or a future pass; not release blockers.
+
+**/test (2026-09-20): PASS, 2/2.** `tests/WorkPilot.Api.Tests` (xUnit + `WebApplicationFactory<Program>`), scoped to the one real integration point in the scaffold — `GET /health/db` (EF Core round-trip) and `GET /hangfire` (dashboard reachability) — since the rest of the scaffold is framework boilerplate with no behavior worth locking in yet. Run against the real self hosted Supabase Postgres (port 5433), not a mock:
+```
+Passed!  - Failed: 0, Passed: 2, Skipped: 0, Total: 2, Duration: 2 s
+```
+Three real bugs found and fixed while writing these tests (not test-side workarounds):
+- `GET /health/db` called `Database.EnsureCreatedAsync()`, which is a no-op once the target *database* already exists (true here — Supabase's `postgres` database already has other schemas) — so `scaffold_pings` was never actually created and every real request 500'd. Switched to EF Core migrations (`Database.MigrateAsync()`), added the `InitialCreate` migration.
+- `AddHangfireServer` (the background worker/watchdog threads) doesn't cooperate with graceful host shutdown inside `WebApplicationFactory.Dispose()` — every test run hung ~60s past a `TaskCanceledException` in `Hangfire.Server.BackgroundProcessingServer.WaitForShutdownAsync`, timeout tuning alone didn't fix it. Fixed by making the worker server itself skippable via `Hangfire:DisableServer` config (off by default; only the tests set it) — the dashboard/client registration (`AddHangfire`) stays on regardless, so `/hangfire` is still exercised for real.
+- The test project's transitive `Microsoft.EntityFrameworkCore.Relational` version (10.0.11, via `Microsoft.AspNetCore.Mvc.Testing`) conflicted with the app's pinned 10.0.12, breaking migrations at runtime with a silent 500. Pinned the test project to 10.0.12 to match.
+Also confirmed the Hangfire dashboard's default local-only authorization filter was correctly rejecting `TestServer` requests (it never populates `RemoteIpAddress`) — not a bug, so the test simulates a loopback request via an `IStartupFilter` rather than loosening the app's real authorization.
+
+Test tier is Beta: all boxes in this feature are now checked. Next: engineer's call whether to mark this feature `done` (and advance spec 0001 status `In Progress` → `Accepted`), or continue with `/check review` → `/document` → `/sync`.
+
+**/check verify (2026-09-20): PASS.** All 6 acceptance criteria met, exercised fresh this run:
+- AC-1: `dotnet build WorkPilot.slnx` → Build succeeded, 0 Warning(s), 0 Error(s).
+- AC-2: `dotnet run --project src/WorkPilot.AppHost` → postgres, workpilotdb, api, and web resources all reached `Running` in the Aspire CLI log within ~3s of each other.
+- AC-3: `curl https://localhost:44497/` (the Web resource's endpoint) → HTTP 200, real Blazor markup, `<title>Home</title>`.
+- AC-4: `ls src/WorkPilot.Domain/Modules src/WorkPilot.Application/Modules` → all 13 named modules present (Identity, Profile, Jobs, Applications, Universities, Outreach, Calendar, Tasks, Agent, Approvals, Integrations, Notifications, Audit).
+- AC-5: ran `src/WorkPilot.Api` standalone with `ConnectionStrings__workpilotdb` pointed at the self hosted Supabase stack's Postgres (`supabase/docker-compose.yml`, port 5433, already up and healthy: GoTrue `/health` and Storage `/status` both HTTP 200) → Api started cleanly, no connection errors, Hangfire installed against that same database.
+- AC-6: Hangfire dashboard → HTTP 200 both against Aspire's dev Postgres (`/hangfire` on the AppHost run) and against the real Supabase Postgres (the standalone Api run above); `\dt hangfire.*` on both databases shows all 12 Hangfire tables created.
+
+All started processes and dev containers (Aspire's AppHost tree, its dev postgres/pgadmin containers) were stopped and cleaned up after verification; the Supabase compose stack (`supabase/`) was left running since it's durable project infra, not a verify artifact.
+Next: `/test stack & architecture`.
 
 **Verified locally (2026-09-20):** `dotnet build` succeeds clean (0 warnings after pinning `Newtonsoft.Json` to 13.0.3 to clear a transitive advisory from Hangfire.Core). `dotnet run --project src/WorkPilot.AppHost` boots Postgres, the Api, and the Blazor Web project together; the Web home page returns HTTP 200. All 13 module folders (Identity, Profile, Jobs, Applications, Universities, Outreach, Calendar, Tasks, Agent, Approvals, Integrations, Notifications, Audit) are present under `WorkPilot.Domain/Modules` and `WorkPilot.Application/Modules`.
 
@@ -30,7 +61,7 @@ Getting there required fixing a few real bugs in the original scaffold, worth kn
 ### 2. Coding standards & tooling
 Capture conventions (lint, format, commit hooks, test runner) from the real scaffolded project.
 **Done when:** root `AGENTS.md` reflects the real stack, and lint/format/pre-commit run clean.
-- [ ] Capture conventions + tooling: `/audit`
+- [x] Capture conventions + tooling: `/audit`
 
 ### 3. Data model · needs a decision
 Core entities from the product spec: Users, Profiles, Skills, Experiences, Education, Resumes/Versions, CoverLetters/Versions, Jobs, JobSources, JobSnapshots, JobMatches, JobApplications, ApplicationAnswers, ApplicationEvents, Universities, Programs, Professors, ResearchAreas, Scholarships, OutreachContacts, OutreachMessages, EmailThreads, FollowUps, Tasks, CalendarEvents, AgentRuns, AgentSteps, ToolCalls, Approvals, AuditLogs, Workflows, WorkflowSteps, WorkflowEvents, Integrations, OAuthConnections, Notifications.

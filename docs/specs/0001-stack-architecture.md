@@ -1,7 +1,7 @@
 # 0001. Adopt .NET Aspire modular monolith with Supabase for commodity plumbing
 
 **Date**: 2026-09-20
-**Status**: In Progress
+**Status**: Accepted
 
 ## Summary
 
