@@ -2,10 +2,17 @@
 
 Everything later features stand on: the stack, the shared data model, the design system, the app shell, and the agent orchestrator's core machinery (planner, policy, tools, workflow, approvals, verification). Nothing in Slice 1 starts until the walking skeleton here boots.
 
-### 1. Stack & architecture · needs a decision
-Pick the stack and scaffold a runnable, deployable project. Original notes sketch .NET/Blazor; the working environment (Vercel, JS Mastery skills) points toward Next.js/TypeScript with a Postgres database provisioned through the Vercel Marketplace. This decision is load bearing for everything else and must not be assumed silently.
-**Done when:** the stack is recorded in a spec, the empty scaffold boots locally and on a Vercel preview deploy, and the modular monolith module boundaries (Identity, Profile, Jobs, Applications, Universities, Outreach, Calendar, Tasks, Agent, Approvals, Integrations, Notifications, Audit) are reflected in the folder structure.
-- [ ] Decide the stack (spec): `/architect stack & architecture`
+### 1. Stack & architecture · in-progress
+.NET Aspire modular monolith (Blazor Web App, Auto render mode, ASP.NET Core backend, EF Core) sharing one self hosted Supabase Postgres database (Supabase owns auth/storage/simple CRUD, the .NET backend owns the Agent/workflows/approvals/browser automation), Hangfire for durable jobs, Playwright for browser automation, Microsoft.Extensions.AI for the provider abstraction, all self hosted on one VPS via Docker Compose.
+**Done when:** the stack is recorded in a spec, the empty scaffold boots locally (`dotnet build` + `aspire run`), and the modular monolith module boundaries (Identity, Profile, Jobs, Applications, Universities, Outreach, Calendar, Tasks, Agent, Approvals, Integrations, Notifications, Audit) are reflected in the folder structure.
+- [x] Decide the stack (spec): `/architect stack & architecture`
+- [ ] Build it: `/develop stack & architecture`
+   - [ ] Scaffold the .NET Aspire solution (AppHost, Web, Application, Domain, Infrastructure, Workers, Contracts, AI projects) (AC-1, AC-3, AC-4)
+   - [ ] Stand up self hosted Supabase (Postgres, GoTrue, Storage) via Docker Compose and connect EF Core to the same database (AC-2, AC-5)
+   - [ ] Wire Hangfire against the shared Postgres database and confirm its dashboard (AC-6)
+- [ ] Verify it: `/check verify stack & architecture`
+- [ ] Test it: `/test stack & architecture`
+Spec 0001 · code in `./`
 
 ### 2. Coding standards & tooling
 Capture conventions (lint, format, commit hooks, test runner) from the real scaffolded project.

@@ -7,13 +7,15 @@ A personal AI work execution system that finds and matches jobs and academic opp
 
 _These are recommendations to keep the build orderly, not requirements. Skip anything that does not fit; you decide when a feature is done._
 
-**Assumptions made while planning (flag if wrong):** MVP boundary is the Job Agent's core loop (discover, match, prepare, approve, track) before University Agent or Personal Agent depth; stack is an open decision for `/architect` (spec 1), leaning Next.js/TypeScript on Vercel given the environment rather than the .NET sketch in the original notes; LinkedIn automation is scoped to discovery and assisted preparation only, never assumed-authorized auto-submission.
+**Decisions confirmed (spec 0001):** .NET Aspire modular monolith — Blazor Web App (Auto render mode) + ASP.NET Core backend + EF Core, sharing one self hosted Supabase Postgres database (Supabase owns auth/storage/simple CRUD; the .NET backend owns the Agent orchestrator/workflows/approvals/browser automation), Hangfire for durable jobs, Playwright for browser automation, Microsoft.Extensions.AI for the provider abstraction, all self hosted on one VPS via Docker Compose. This repo does **not** deploy to Vercel; see [specs/0001-stack-architecture.md](../specs/0001-stack-architecture.md) for the full decision record and consequences.
+
+**Assumptions made while planning (flag if wrong):** MVP boundary is the Job Agent's core loop (discover, match, prepare, approve, track) before University Agent or Personal Agent depth; LinkedIn automation is scoped to discovery and assisted preparation only, never assumed-authorized auto-submission.
 
 ## At a glance
 
 | # | Feature | Phase | Status |
 |---|---------|-------|--------|
-| 1 | Stack & architecture | Foundation | planned |
+| 1 | Stack & architecture | Foundation | in-progress |
 | 2 | Coding standards & tooling | Foundation | planned |
 | 3 | Data model | Foundation | planned |
 | 4 | Design system & UI foundation | Foundation | planned |

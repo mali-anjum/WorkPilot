@@ -7,6 +7,12 @@
       "skillPath": "skills/architect/SKILL.md",
       "computedHash": "ff57c65a06ca4047420113d1eaa18e5002bc657224688b9350a1f06d77204327"
     },
+    "aspire": {
+      "source": "managedcode/dotnet-skills",
+      "sourceType": "github",
+      "skillPath": "catalog/Frameworks/Aspire/skills/aspire/SKILL.md",
+      "computedHash": "08ac6f2e0b2fab17b797b1aad45d8400e1e3d3d11b198d2e3002e0c0492623b7"
+    },
     "audit": {
       "source": "jsmastery-pro/skills",
       "sourceType": "github",
@@ -36,6 +42,18 @@
       "sourceType": "github",
       "skillPath": "skills/document/SKILL.md",
       "computedHash": "90933443f204d2ed29c84730be87b7b5470f6819fccde6129aedad1df517fb92"
+    },
+    "microsoft-extensions-ai": {
+      "source": "managedcode/dotnet-skills",
+      "sourceType": "github",
+      "skillPath": "catalog/Libraries/Microsoft-Extensions-AI/skills/microsoft-extensions-ai/SKILL.md",
+      "computedHash": "c39bb080528503460d703ec590e47fc220739474d1860bf4a6fa49994acbbcc5"
+    },
+    "scaffold-dotnet-test-project": {
+      "source": "dotnet/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/dotnet-test/skills/scaffold-dotnet-test-project/SKILL.md",
+      "computedHash": "74573b5f147dc13a2661fc312be32cfa23a55977bc2ff98516dc77bf6c790e09"
     },
     "scope": {
       "source": "jsmastery-pro/skills",
