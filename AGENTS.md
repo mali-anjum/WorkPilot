@@ -49,7 +49,7 @@ Architecture: Clean Architecture. Layers: `Domain` (entities, value objects) →
 - Document public APIs (controllers/endpoints, services) with XML doc comments.
 - One consistent error handling pattern across the API (not ad hoc try/catch per endpoint); not yet chosen, decide and record when the first real error path is built.
 - Validate configuration/env vars at startup; fail fast rather than a null reference deep in a request.
-- Format with `dotnet format` + `.editorconfig`; run `dotnet format` on staged files before commit (format only, not a full lint/typecheck gate yet).
+- Format with `dotnet format` + `.editorconfig`; a `.githooks/pre-commit` hook runs `dotnet format` on staged `.cs` files before commit (format only, not a full lint/typecheck gate yet). One time per clone: `git config core.hooksPath .githooks`.
 - Testing gate: unit + integration tests with xUnit (`WebApplicationFactory` for integration tests against a real Postgres, never a mock of the database).
 - No CI configured yet.
 
