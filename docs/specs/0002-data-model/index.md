@@ -1,7 +1,7 @@
 # 0002. Core data model for the Personal Work Agent
 
 **Date**: 2026-09-21
-**Status**: Proposed
+**Status**: In Progress
 
 ## Summary
 

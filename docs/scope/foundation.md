@@ -65,20 +65,22 @@ Capture conventions (lint, format, commit hooks, test runner) from the real scaf
 
 `/develop` (2026-09-21): wired `.editorconfig`, `dotnet format WorkPilot.slnx --verify-no-changes` passes clean, and a format only pre-commit hook (`.githooks/pre-commit`, `git config core.hooksPath .githooks`) runs it on staged `.cs` files. Code in `.editorconfig`, `.githooks/`.
 
-### 3. Data model · ready to build
+### 3. Data model · in-progress
 Core entities from the product spec: Users, Profiles, Skills, Experiences, Education, Resumes/Versions, CoverLetters/Versions, Jobs, JobSources, JobSnapshots, JobMatches, JobApplications, ApplicationAnswers, ApplicationEvents, Universities, Programs, Professors, ResearchAreas, Scholarships, OutreachContacts, OutreachMessages, EmailThreads, FollowUps, Tasks, CalendarEvents, AgentRuns, AgentSteps, ToolCalls, Approvals, AuditLogs, Workflows, WorkflowSteps, WorkflowEvents, Integrations, OAuthConnections, Notifications.
 **Done when:** the schema supports every entity above with real relationships, migrations apply cleanly, and provenance fields (source URL, retrieved/verified timestamps, confidence) exist on every externally sourced record.
 - [x] Design it (spec): `/architect data model` → [specs/0002-data-model/index.md](../specs/0002-data-model/index.md)
-- [ ] Build it: `/develop data model`
-  1. Define the `Provenance` owned type and apply it to every externally sourced entity (AC-2)
-  2. Model Identity/Profile, Resume/CoverLetter (immutable versions), Jobs, and Applications incl. the `JobApplication` state machine (AC-1, AC-4, AC-5)
-  3. Model Universities, Outreach, Personal, Integrations/Notifications, Approvals/Audit (AC-1)
-  4. Model Agent/Workflow entities with Storage backed payload references (AC-1, AC-8)
-  5. Add the global soft delete query filter to every soft deleted entity (AC-3)
-  6. Wire ASP.NET Core Data Protection for `OAuthConnection` tokens (AC-6)
-  7. Generate and apply the single initial migration, confirm it targets only the `app` schema (AC-1, AC-7)
+- [x] Build it: `/develop data model`
+  1. [x] Define the `Provenance` owned type and apply it to every externally sourced entity (AC-2)
+  2. [x] Model Identity/Profile, Resume/CoverLetter (immutable versions), Jobs, and Applications incl. the `JobApplication` state machine (AC-1, AC-4, AC-5)
+  3. [x] Model Universities, Outreach, Personal, Integrations/Notifications, Approvals/Audit (AC-1)
+  4. [x] Model Agent/Workflow entities with Storage backed payload references (AC-1, AC-8)
+  5. [x] Add the global soft delete query filter to every soft deleted entity (AC-3)
+  6. [x] Wire ASP.NET Core Data Protection for `OAuthConnection` tokens (AC-6)
+  7. [x] Generate and apply the single initial migration, confirm it targets only the `app` schema (AC-1, AC-7)
 - [ ] Verify it: `/check verify data model`
 - [ ] Test it: `/test data model`
+
+`/develop` (2026-09-21): all 39 tables live in the self hosted Supabase Postgres `app` schema (confirmed via `\dt app.*`), `auth.*`/`storage.*` untouched. `ScaffoldPing` removed (superseded by the real model); `/health/db` now counts `profiles`. Code in `src/WorkPilot.Domain/Modules/*/Entities.cs` (+ `Applications/JobApplication.cs`), `src/WorkPilot.Infrastructure/Persistence/`.
 
 ### 4. Design system & UI foundation · needs a decision
 Token based visual language (colors, type, spacing, radius per the product spec section 4), base components (AppShell, Sidebar, TopBar, PageHeader, Card, Button, Input, Select, Tabs, Badge/StatusBadge, DataTable, EmptyState, Skeleton, Timeline, Stepper, Toast, Modal, CommandPalette), light and dark mode.
