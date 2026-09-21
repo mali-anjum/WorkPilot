@@ -78,11 +78,16 @@ Core entities from the product spec: Users, Profiles, Skills, Experiences, Educa
   6. [x] Wire ASP.NET Core Data Protection for `OAuthConnection` tokens (AC-6)
   7. [x] Generate and apply the single initial migration, confirm it targets only the `app` schema (AC-1, AC-7)
 - [x] Verify it: `/check verify data model`
-- [ ] Test it: `/test data model`
+- [x] Test it: `/test data model`
 
 `/develop` (2026-09-21): all 39 tables live in the self hosted Supabase Postgres `app` schema (confirmed via `\dt app.*`), `auth.*`/`storage.*` untouched. `ScaffoldPing` removed (superseded by the real model); `/health/db` now counts `profiles`. Code in `src/WorkPilot.Domain/Modules/*/Entities.cs` (+ `Applications/JobApplication.cs`), `src/WorkPilot.Infrastructure/Persistence/`.
 
 **/check verify (2026-09-21): PASS.** All 8 acceptance criteria met, exercised live against the self hosted Supabase Postgres stack (port 5433): schema applied cleanly (`has-pending-model-changes` → none), all 39 tables present under `app`, `auth.*`/`storage.*` table count unchanged (33) confirming EF never touched them, provenance columns required non-null on all 6 externally sourced entities, both integration tests pass, and a scratch run against the live DB proved the `JobApplication` state machine rejects invalid transitions, a soft deleted `Job` disappears from default queries while its `JobApplication`/`ApplicationEvent` history stays intact, a second `ResumeVersion` never mutates the first, `OAuthConnection.AccessToken` reads back as ciphertext via raw SQL, and a stale `WorkflowEvent` is queryable by its retention cutoff. Full evidence in [specs/0002-data-model/verify.md](../specs/0002-data-model/verify.md). Next: `/test data model`.
+
+**/test (2026-09-21): PASS, 22/22.** New `tests/WorkPilot.Domain.Tests` (xUnit, wired into `WorkPilot.slnx`, no infrastructure/database per `AGENTS.md`): the `JobApplication` state machine (every valid transition plus every skipped/terminal rejection, AC-4) and the shared `Entity`/`SoftDeletableEntity` base behavior (unique time ordered ids, soft delete flags, AC-3's domain half). The database dependent criteria (AC-1, AC-2, AC-6, AC-7, AC-8, and AC-3's query filter half) stay covered by `verify.md`'s live Postgres evidence per this project's "infrastructure is integration tested against real systems, never mocked" rule; not re-asserted here.
+```
+Passed!  - Failed: 0, Passed: 22, Skipped: 0, Total: 22, Duration: 80 ms
+```
 
 ### 4. Design system & UI foundation · needs a decision
 Token based visual language (colors, type, spacing, radius per the product spec section 4), base components (AppShell, Sidebar, TopBar, PageHeader, Card, Button, Input, Select, Tabs, Badge/StatusBadge, DataTable, EmptyState, Skeleton, Timeline, Stepper, Toast, Modal, CommandPalette), light and dark mode.
