@@ -65,7 +65,7 @@ Capture conventions (lint, format, commit hooks, test runner) from the real scaf
 
 `/develop` (2026-09-21): wired `.editorconfig`, `dotnet format WorkPilot.slnx --verify-no-changes` passes clean, and a format only pre-commit hook (`.githooks/pre-commit`, `git config core.hooksPath .githooks`) runs it on staged `.cs` files. Code in `.editorconfig`, `.githooks/`.
 
-### 3. Data model · in-progress
+### 3. Data model · done
 Core entities from the product spec: Users, Profiles, Skills, Experiences, Education, Resumes/Versions, CoverLetters/Versions, Jobs, JobSources, JobSnapshots, JobMatches, JobApplications, ApplicationAnswers, ApplicationEvents, Universities, Programs, Professors, ResearchAreas, Scholarships, OutreachContacts, OutreachMessages, EmailThreads, FollowUps, Tasks, CalendarEvents, AgentRuns, AgentSteps, ToolCalls, Approvals, AuditLogs, Workflows, WorkflowSteps, WorkflowEvents, Integrations, OAuthConnections, Notifications.
 **Done when:** the schema supports every entity above with real relationships, migrations apply cleanly, and provenance fields (source URL, retrieved/verified timestamps, confidence) exist on every externally sourced record.
 - [x] Design it (spec): `/architect data model` → [specs/0002-data-model/index.md](../specs/0002-data-model/index.md)
