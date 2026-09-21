@@ -18,6 +18,13 @@ builder.AddServiceDefaults();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
+// Encrypts OAuthConnection access/refresh tokens before EF Core writes them
+// (docs/specs/0002-data-model/index.md, AC-6). Default key storage (the
+// local user profile / registry on Windows, ~/.aspnet/DataProtection-Keys on
+// Linux) is fine for this single instance VPS deployment; revisit if the key
+// ring needs to survive a container image swap without a mounted volume.
+builder.Services.AddDataProtection();
+
 // EF Core, pointed at the "workpilotdb" connection supplied by Aspire
 // (the AppHost wires this to the same Postgres instance/database Supabase's
 // own Postgres container exposes; see AppHost.cs and docker-compose.yml).
@@ -87,8 +94,8 @@ app.UseHangfireDashboard("/hangfire");
 
 app.MapGet("/health/db", async (WorkPilotDbContext db) =>
 {
-    var count = await db.ScaffoldPings.CountAsync();
-    return Results.Ok(new { status = "ok", scaffoldPings = count });
+    var count = await db.Profiles.CountAsync();
+    return Results.Ok(new { status = "ok", profiles = count });
 });
 
 app.Run();

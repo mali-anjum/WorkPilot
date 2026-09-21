@@ -26,8 +26,8 @@ dotnet run --project src/WorkPilot.AppHost
 # Build
 dotnet build WorkPilot.slnx
 
-# Test
-dotnet test tests/WorkPilot.Api.Tests/WorkPilot.Api.Tests.csproj
+# Test (all test projects)
+dotnet test WorkPilot.slnx
 ```
 
 Self hosted Supabase stack (Postgres, GoTrue, Storage): `docker compose up` in `supabase/` (see `supabase/.env.example`).

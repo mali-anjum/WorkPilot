@@ -60,8 +60,10 @@ public class HealthDbEndpointTests
     }
 
     [Fact]
-    public async Task HealthDb_ReturnsOkWithScaffoldPingCount()
+    public async Task HealthDb_ReturnsOkWithProfileCount()
     {
+        // Updated for the real data model (spec 0002): ScaffoldPing is gone,
+        // /health/db now round-trips against the `profiles` table instead.
         using var factory = CreateFactory();
         using var client = factory.CreateClient();
 
@@ -70,7 +72,7 @@ public class HealthDbEndpointTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("\"status\":\"ok\"", body);
-        Assert.Contains("\"scaffoldPings\":", body);
+        Assert.Contains("\"profiles\":", body);
     }
 
     [Fact]
