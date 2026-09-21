@@ -77,10 +77,12 @@ Core entities from the product spec: Users, Profiles, Skills, Experiences, Educa
   5. [x] Add the global soft delete query filter to every soft deleted entity (AC-3)
   6. [x] Wire ASP.NET Core Data Protection for `OAuthConnection` tokens (AC-6)
   7. [x] Generate and apply the single initial migration, confirm it targets only the `app` schema (AC-1, AC-7)
-- [ ] Verify it: `/check verify data model`
+- [x] Verify it: `/check verify data model`
 - [ ] Test it: `/test data model`
 
 `/develop` (2026-09-21): all 39 tables live in the self hosted Supabase Postgres `app` schema (confirmed via `\dt app.*`), `auth.*`/`storage.*` untouched. `ScaffoldPing` removed (superseded by the real model); `/health/db` now counts `profiles`. Code in `src/WorkPilot.Domain/Modules/*/Entities.cs` (+ `Applications/JobApplication.cs`), `src/WorkPilot.Infrastructure/Persistence/`.
+
+**/check verify (2026-09-21): PASS.** All 8 acceptance criteria met, exercised live against the self hosted Supabase Postgres stack (port 5433): schema applied cleanly (`has-pending-model-changes` → none), all 39 tables present under `app`, `auth.*`/`storage.*` table count unchanged (33) confirming EF never touched them, provenance columns required non-null on all 6 externally sourced entities, both integration tests pass, and a scratch run against the live DB proved the `JobApplication` state machine rejects invalid transitions, a soft deleted `Job` disappears from default queries while its `JobApplication`/`ApplicationEvent` history stays intact, a second `ResumeVersion` never mutates the first, `OAuthConnection.AccessToken` reads back as ciphertext via raw SQL, and a stale `WorkflowEvent` is queryable by its retention cutoff. Full evidence in [specs/0002-data-model/verify.md](../specs/0002-data-model/verify.md). Next: `/test data model`.
 
 ### 4. Design system & UI foundation · needs a decision
 Token based visual language (colors, type, spacing, radius per the product spec section 4), base components (AppShell, Sidebar, TopBar, PageHeader, Card, Button, Input, Select, Tabs, Badge/StatusBadge, DataTable, EmptyState, Skeleton, Timeline, Stepper, Toast, Modal, CommandPalette), light and dark mode.
