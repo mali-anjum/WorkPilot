@@ -12,6 +12,9 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <!-- The official Supabase .NET client, used only to call GoTrue (self hosted auth
+         service); docs/specs/0004-auth-app-shell.md. -->
+    <PackageReference Include="Supabase" Version="1.4.0" />
   </ItemGroup>
 
   <PropertyGroup>

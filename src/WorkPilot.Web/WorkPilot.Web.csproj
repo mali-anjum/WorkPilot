@@ -14,6 +14,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WorkPilot.ServiceDefaults\WorkPilot.ServiceDefaults.csproj" />
+    <!-- Only for IAuthService/Client (GoTrue calls); the Web host never touches
+         WorkPilotDbContext directly, that stays owned by WorkPilot.Api (see
+         docs/specs/0004-auth-app-shell.md). -->
+    <ProjectReference Include="..\WorkPilot.Application\WorkPilot.Application.csproj" />
+    <ProjectReference Include="..\WorkPilot.Infrastructure\WorkPilot.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

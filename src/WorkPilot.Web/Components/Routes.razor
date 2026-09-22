@@ -1,6 +1,26 @@
 ﻿<Router AppAssembly="typeof(Program).Assembly" AdditionalAssemblies="new[] { typeof(Client._Imports).Assembly }" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        @* The first request per session is already gated at the HTTP level
+           (RequireAuthorization() in Program.cs: an unauthenticated request
+           never reaches this Router at all). AuthorizeRouteView is the
+           second layer, for a session that goes invalid mid-circuit (the
+           cookie expires while an interactive Blazor Server/WASM circuit is
+           already open); NotAuthorized forces a real navigation back to
+           /login so the redirect is a true HTTP round trip, not just a
+           client side route change. Docs/specs/0004-auth-app-shell.md. *@
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                @{
+                    var currentPath = new Uri(Navigation.Uri).PathAndQuery;
+                    Navigation.NavigateTo($"/login?returnUrl={Uri.EscapeDataString(currentPath)}", forceLoad: true);
+                }
+            </NotAuthorized>
+        </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
 </Router>
+
+@code {
+    [Inject]
+    private NavigationManager Navigation { get; set; } = default!;
+}

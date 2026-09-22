@@ -1,6 +1,8 @@
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
+using WorkPilot.Application.Modules.Identity;
+using WorkPilot.Infrastructure.Modules.Identity;
 using WorkPilot.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -30,6 +32,12 @@ builder.Services.AddDataProtection();
 // own Postgres container exposes; see AppHost.cs and docker-compose.yml).
 // EF Core owns only the product schema here, never `auth.*`/`storage.*`.
 builder.AddNpgsqlDbContext<WorkPilotDbContext>("workpilotdb");
+
+// Resolves/creates the Profile row for a GoTrue user id. The Api process is
+// the sole owner of the DbContext (see above), so the Web host calls this
+// internal endpoint over the Aspire service discovery network rather than
+// touching EF Core itself (docs/specs/0004-auth-app-shell.md).
+builder.Services.AddScoped<IProfileProvisioningService, ProfileProvisioningService>();
 
 // Hangfire, storage in the same Postgres database as EF Core (per spec:
 // "Background jobs / workflows | Hangfire, storage in the same Postgres
@@ -98,4 +106,23 @@ app.MapGet("/health/db", async (WorkPilotDbContext db) =>
     return Results.Ok(new { status = "ok", profiles = count });
 });
 
+// Internal only: the Api project is never externally exposed (see AppHost.cs,
+// only "web" carries WithExternalHttpEndpoints), so this needs no separate
+// auth beyond that network boundary. Called once per sign in by the Web
+// host to resolve the founder's ProfileId (docs/specs/0004-auth-app-shell.md).
+app.MapPost("/internal/identity/profile", async (
+    ResolveProfileRequest request,
+    IProfileProvisioningService profiles,
+    CancellationToken cancellationToken) =>
+{
+    var profileId = await profiles.GetOrCreateProfileIdAsync(request.AuthUserId, request.Email, cancellationToken);
+    return Results.Ok(new ResolveProfileResponse(profileId));
+});
+
 app.Run();
+
+/// <summary>Request body for <c>POST /internal/identity/profile</c>.</summary>
+internal sealed record ResolveProfileRequest(Guid AuthUserId, string Email);
+
+/// <summary>Response body for <c>POST /internal/identity/profile</c>.</summary>
+internal sealed record ResolveProfileResponse(Guid ProfileId);

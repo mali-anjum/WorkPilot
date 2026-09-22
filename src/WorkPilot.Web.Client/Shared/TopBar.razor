@@ -3,12 +3,18 @@
 
 <header class="wp-topbar">
     <div class="wp-topbar__hint">Press <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>K</kbd> to search</div>
-    <Button Variant="ButtonVariant.Secondary"
-            Size="ButtonSize.Sm"
-            AriaLabel="@(_theme == "dark" ? "Switch to light mode" : "Switch to dark mode")"
-            OnClick="ToggleTheme">
-        @(_theme == "dark" ? "☾ Dark" : "☀ Light")
-    </Button>
+    <div class="wp-topbar__actions">
+        <Button Variant="ButtonVariant.Secondary"
+                Size="ButtonSize.Sm"
+                AriaLabel="@(_theme == "dark" ? "Switch to light mode" : "Switch to dark mode")"
+                OnClick="ToggleTheme">
+            @(_theme == "dark" ? "☾ Dark" : "☀ Light")
+        </Button>
+        @* A real link (not a Blazor button): signing out clears the session
+           cookie via a server side POST, which an interactive component
+           can't issue itself (docs/specs/0004-auth-app-shell.md). *@
+        <a href="/logout-confirm" class="wp-topbar__signout">Sign out</a>
+    </div>
 </header>
 
 @code {
