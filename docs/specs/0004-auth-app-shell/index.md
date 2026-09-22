@@ -1,7 +1,7 @@
 # 0004. Auth and app shell gating
 
 **Date**: 2026-09-22
-**Status**: In Progress
+**Status**: Accepted
 
 ## Summary
 
