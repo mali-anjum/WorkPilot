@@ -1,0 +1,94 @@
+@namespace WorkPilot.Web.Client.Shared
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (IsOpen)
+{
+    <div class="wp-modal-backdrop" @onclick="Close">
+        <div class="wp-modal"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="@_titleId"
+             @onclick:stopPropagation="true"
+             @onkeydown="OnKeyDown"
+             @ref="_dialogRef">
+            <div class="wp-modal__header">
+                <h2 id="@_titleId" class="wp-modal__title">@Title</h2>
+                <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Sm" AriaLabel="Close" OnClick="Close">✕</Button>
+            </div>
+            <div class="wp-modal__body">
+                @ChildContent
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private readonly string _titleId = $"wp-modal-title-{Guid.NewGuid():N}";
+    private ElementReference _dialogRef;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _focusTrap;
+
+    /// <summary>Whether the modal is open.</summary>
+    [Parameter] public bool IsOpen { get; set; }
+
+    /// <summary>Two way binding companion for <see cref="IsOpen"/>.</summary>
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+
+    /// <summary>The dialog's accessible title.</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>Raised when the modal is closed (backdrop click, close button, or Escape).</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>The modal's content.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsOpen && _focusTrap is null)
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/interop.js");
+            _focusTrap = await _module.InvokeAsync<IJSObjectReference>("trapFocus", _dialogRef);
+        }
+        else if (!IsOpen && _focusTrap is not null)
+        {
+            await ReleaseFocusTrapAsync();
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await Close();
+        }
+    }
+
+    private async Task Close()
+    {
+        await ReleaseFocusTrapAsync();
+        IsOpen = false;
+        await IsOpenChanged.InvokeAsync(false);
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task ReleaseFocusTrapAsync()
+    {
+        if (_focusTrap is not null)
+        {
+            await _focusTrap.InvokeVoidAsync("dispose");
+            await _focusTrap.DisposeAsync();
+            _focusTrap = null;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await ReleaseFocusTrapAsync();
+        if (_module is not null)
+        {
+            await _module.DisposeAsync();
+        }
+    }
+}

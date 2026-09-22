@@ -1,0 +1,19 @@
+@namespace WorkPilot.Web.Client.Shared
+
+<nav class="wp-sidebar" aria-label="Primary">
+    <div class="wp-sidebar__brand">WorkPilot</div>
+    @foreach (var section in NavRoutes.Sections)
+    {
+        <div class="wp-sidebar__section">
+            <div class="wp-sidebar__section-label">@(section.Label)</div>
+            @foreach (var item in section.Items)
+            {
+                <NavLink class="wp-sidebar__link"
+                         href="@item.Href"
+                         Match="@(item.Href == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)">
+                    @item.Label
+                </NavLink>
+            }
+        </div>
+    }
+</nav>

@@ -1,12 +1,12 @@
-﻿<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="en" data-theme="@Theme">
 
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <ResourcePreloader />
-    <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
+    <link rel="stylesheet" href="@Assets["css/tokens.css"]" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["WorkPilot.Web.styles.css"]" />
     <ImportMap />
@@ -15,9 +15,22 @@
 </head>
 
 <body>
-    <Routes />
+    <CascadingValue Value="Theme" Name="InitialTheme">
+        <Routes @rendermode="InteractiveAuto" />
+    </CascadingValue>
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
 </body>
 
 </html>
+
+@code {
+    // Read before first paint (App.razor's HttpContext cascading parameter, available
+    // during the server render), so data-theme is correct on the very first byte with
+    // no dark-mode flash and no dependency on JS interop having run yet.
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private string Theme =>
+        HttpContext?.Request.Cookies["workpilot-theme"] == "light" ? "light" : "dark";
+}

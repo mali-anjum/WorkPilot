@@ -1,0 +1,32 @@
+@namespace WorkPilot.Web.Client.Shared
+
+<button type="@Type"
+        class="wp-button wp-button--@Variant.ToString().ToLowerInvariant() wp-button--@Size.ToString().ToLowerInvariant()"
+        disabled="@Disabled"
+        aria-label="@AriaLabel"
+        @onclick="OnClick">
+    @ChildContent
+</button>
+
+@code {
+    /// <summary>Visual style of the button.</summary>
+    [Parameter] public ButtonVariant Variant { get; set; } = ButtonVariant.Primary;
+
+    /// <summary>Size of the button.</summary>
+    [Parameter] public ButtonSize Size { get; set; } = ButtonSize.Md;
+
+    /// <summary>Whether the button is disabled (removed from the tab order by the browser).</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>The HTML button type; defaults to "button" so it never submits a form by accident.</summary>
+    [Parameter] public string Type { get; set; } = "button";
+
+    /// <summary>Accessible label for an icon only button; omit when the visible content already labels it.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    /// <summary>Raised on click, or on Enter/Space per native button semantics (no extra wiring needed).</summary>
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    /// <summary>The button's visible content.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

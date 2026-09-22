@@ -1,0 +1,54 @@
+@page "/design"
+
+<PageTitle>Design system checklist</PageTitle>
+
+<PageHeader Title="Design system checklist" Description="A live example of every base component in this feature's scope (spec 0003)." />
+
+<div class="wp-design-grid">
+    <Card Title="Button">
+        <div class="wp-design-row">
+            <Button Variant="ButtonVariant.Primary">Primary</Button>
+            <Button Variant="ButtonVariant.Secondary">Secondary</Button>
+            <Button Variant="ButtonVariant.Danger">Danger</Button>
+            <Button Variant="ButtonVariant.Ghost">Ghost</Button>
+            <Button Variant="ButtonVariant.Primary" Disabled="true">Disabled</Button>
+        </div>
+    </Card>
+
+    <Card Title="Badge / StatusBadge">
+        <div class="wp-design-row">
+            <Badge Status="StatusKind.Neutral">Neutral</Badge>
+            <Badge Status="StatusKind.Success">Success</Badge>
+            <Badge Status="StatusKind.Warning">Warning</Badge>
+            <Badge Status="StatusKind.Danger">Danger</Badge>
+            <Badge Status="StatusKind.Info">Info</Badge>
+        </div>
+    </Card>
+
+    <Card Title="EmptyState">
+        <EmptyState Title="Nothing here" Description="An example empty state." Icon="📭" />
+    </Card>
+
+    <Card Title="PageHeader">
+        <PageHeader Title="Example title" Description="Example description text." />
+    </Card>
+
+    <Card Title="Modal">
+        <Button OnClick="() => _modalOpen = true">Open modal</Button>
+        <Modal @bind-IsOpen="_modalOpen" Title="Example modal">
+            <p>This is an example modal body, with focus trapped inside while it is open.</p>
+        </Modal>
+    </Card>
+
+    <Card Title="CommandPalette">
+        <p>Press Ctrl/Cmd + K anywhere in the shell to open it (also mounted globally in AppShell).</p>
+    </Card>
+
+    <Card Title="AppShell / Sidebar / TopBar">
+        <p>Visible around this page: the sidebar navigation and top bar with the theme toggle.</p>
+    </Card>
+</div>
+
+@code {
+    private bool _modalOpen;
+}

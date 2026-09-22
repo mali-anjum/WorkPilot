@@ -1,0 +1,24 @@
+@namespace WorkPilot.Web.Client.Shared
+
+<div class="wp-empty-state">
+    @if (!string.IsNullOrWhiteSpace(Icon))
+    {
+        <span class="wp-empty-state__icon" aria-hidden="true">@Icon</span>
+    }
+    <p class="wp-empty-state__title">@Title</p>
+    @if (!string.IsNullOrWhiteSpace(Description))
+    {
+        <p class="wp-empty-state__description">@Description</p>
+    }
+</div>
+
+@code {
+    /// <summary>The main message, e.g. "No jobs yet".</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>Optional supporting text.</summary>
+    [Parameter] public string? Description { get; set; }
+
+    /// <summary>Optional decorative glyph; hidden from assistive tech.</summary>
+    [Parameter] public string? Icon { get; set; }
+}

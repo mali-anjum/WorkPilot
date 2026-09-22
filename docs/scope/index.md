@@ -18,7 +18,7 @@ _These are recommendations to keep the build orderly, not requirements. Skip any
 | 1 | Stack & architecture | Foundation | done |
 | 2 | Coding standards & tooling | Foundation | done |
 | 3 | Data model | Foundation | done |
-| 4 | Design system & UI foundation | Foundation | planned |
+| 4 | Design system & UI foundation | Foundation | done |
 | 5 | Auth & app shell | Foundation | planned |
 | 6 | Agent orchestrator core | Foundation | planned |
 | 7 | AI provider abstraction | Foundation | planned |

@@ -1,4 +1,3 @@
-using WorkPilot.Web.Client.Pages;
 using WorkPilot.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);

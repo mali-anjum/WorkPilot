@@ -89,10 +89,36 @@ Core entities from the product spec: Users, Profiles, Skills, Experiences, Educa
 Passed!  - Failed: 0, Passed: 22, Skipped: 0, Total: 22, Duration: 80 ms
 ```
 
-### 4. Design system & UI foundation · needs a decision
-Token based visual language (colors, type, spacing, radius per the product spec section 4), base components (AppShell, Sidebar, TopBar, PageHeader, Card, Button, Input, Select, Tabs, Badge/StatusBadge, DataTable, EmptyState, Skeleton, Timeline, Stepper, Toast, Modal, CommandPalette), light and dark mode.
+### 4. Design system & UI foundation · done
+Token based visual language (colors, type, spacing, radius per the product spec section 4), base components (AppShell, Sidebar, TopBar, PageHeader, Card, Button, Badge/StatusBadge, EmptyState, Modal, CommandPalette now; Input, Select, Tabs, DataTable, Skeleton, Timeline, Stepper, Toast deferred to the first real screen that needs each), light and dark mode (cookie backed, no flash on Blazor Auto render).
 **Done when:** `design.md` covers type/color/spacing/components, base components handle focus and keyboard, and the app shell renders the full navigation (Overview, Work, Personal, Agent, System sections) with empty pages behind each route.
-- [ ] Design it (spec): `/architect design system & UI foundation`
+- [x] Design it (spec): `/architect design system & UI foundation` → [0003](../specs/0003-design-system-ui-foundation/index.md)
+- [x] Build it: `/develop design system & UI foundation`
+  - [x] Tokens + cookie based theme mechanism + tracer thread (AppShell/Sidebar/TopBar/PageHeader wired through `/`) — AC-1 (partial), AC-2 (partial), AC-5, AC-6
+  - [x] Static display components: Card, Badge/StatusBadge, EmptyState — AC-3
+  - [x] Button, Modal, CommandPalette with full keyboard/focus support + global Cmd/Ctrl+K — AC-3, AC-4, AC-7
+  - [x] Wire every remaining stub route; `/design` checklist page; `docs/design.md` — AC-1, AC-2, AC-3, AC-8
+- [x] Verify it: `/check verify design system & UI foundation`
+- [x] Test it: `/test design system & UI foundation`
+
+`/develop` (2026-09-21): all 10 in-scope components built (`src/WorkPilot.Web.Client/Shared/`), the theme cookie mechanism, all 11 stub routes, the `/design` checklist page, and `docs/design.md`. A real Blazor Auto render mode bug surfaced during the build (not caught by the design gate): the render mode can't be set on a nested `AppShell` component receiving `ChildContent` across the static-to-interactive boundary (`RenderFragment` isn't serializable across it). Fixed by setting `@rendermode InteractiveAuto` once on `<Routes>` in `App.razor` instead, and forwarding the server-read theme cookie down as a named `string` cascading value (`InitialTheme`) rather than reading `HttpContext` again inside the now-interactive `MainLayout`. Verified live: dark is the default on `/`, a `workpilot-theme=light` cookie flips `data-theme` in the first server-rendered byte (no flash) confirmed via `curl`, and all 11 routes plus `/design` return 200. 8 new bUnit tests (`tests/WorkPilot.Web.Tests`, wired into `WorkPilot.slnx`) cover Modal/CommandPalette Escape-to-close and Button click; `dotnet format --verify-no-changes` passes. DOM tab order and the rendered focus ring are native browser behavior bUnit can't exercise; left for manual `/check verify`. Code in `src/WorkPilot.Web.Client/Shared/`, `src/WorkPilot.Web/Components/`, `src/WorkPilot.Web/wwwroot/css/tokens.css`, `src/WorkPilot.Web/wwwroot/js/interop.js`, `docs/design.md`.
+
+**/check verify (2026-09-21): PASS.** All 12 verify.md behaviors confirmed with cited evidence; no AC missing or unapplied. Command line checks: `dotnet build` 0 errors, `dotnet test tests/WorkPilot.Web.Tests` 8/8 pass, `dotnet format --verify-no-changes` clean, all 11 routes + `/design` return 200, theme cookie flips `data-theme` in the first byte both ways. This session had no browser automation tool connected, so it installed Playwright (`npm install playwright` + system Chrome, no sudo needed) into a scratch dir and drove the real app with it to close the remaining interactive checks: theme toggle click flips `data-theme` with no navigation and survives reload; 20 sequential Tabs from `/` land on all 11 nav links then the theme toggle, each with a visible `outline: solid 2px` and `:focus-visible` true, in DOM order; a real `Control+k` keydown sent to `body` (not an input) on `/jobs` opens the CommandPalette with focus landing in its search input, `Escape` closes it; the `/design` page's Modal traps 15 consecutive Tabs inside `[role="dialog"]`, `Escape` closes it and returns focus to the "Open modal" button; clicking the Jobs sidebar link adds the `active` class. Full evidence and the exact steps in [specs/0003-design-system-ui-foundation/verify.md](../specs/0003-design-system-ui-foundation/verify.md). Next: `/test design system & UI foundation`.
+
+**/test (2026-09-21): PASS, 42/42.** Focused this pass on the shared components and route data (10 changed files were already covered by earlier tests; 11 near-identical stub pages deferred, see below), extending `tests/WorkPilot.Web.Tests`: `AppShellTests` (renders Sidebar + TopBar + routed content together, CommandPalette starts closed, forwards `InitialTheme`), `SidebarTests` (all 5 sections/11 links with literal hrefs, active highlight on `/` and after navigating, covers AC-2), `TopBarTests` (starts in sync with the server resolved theme, toggle flips label/aria-label both directions), `BadgeTests` (each `StatusKind` maps to its own token class, default is neutral), `CardTests` (optional title shown/omitted, child content renders), `EmptyStateTests` (required title, optional description/icon shown or omitted, icon is `aria-hidden`), `PageHeaderTests` (title as `h1`, optional description), and `NavRoutesTests` (the 5 sections and all 11 routes match spec 0003's literal Route map exactly, no duplicate hrefs, covers AC-2). All green on the first run, no real bugs found.
+```
+Total tests: 42
+     Passed: 42
+ Total time: 1.9447 Seconds
+```
+`interop.js` (no JS test runner in this stack, its DOM effects are covered by the Playwright evidence in `verify.md`) and `App.razor`/`MainLayout.razor`'s theme cookie resolution (server rendering logic, covered by the curl evidence in `verify.md`, not bUnit-testable) stay out of scope for bUnit. Test tier is Beta: both boxes now checked.
+
+**/test follow up (2026-09-21): stub page batch, PASS, 13/13 new (55/55 total).** Added `WorkPilot.Web.csproj` as a project reference to `WorkPilot.Web.Tests.csproj` (the 11 stub pages plus `Home`/`Design` live in `WorkPilot.Web`, not `WorkPilot.Web.Client`), then wrote one test per stub page (`JobsTests`, `ApplicationsTests`, `UniversitiesTests`, `OutreachTests`, `CalendarTests`, `TasksTests` (as `TasksPageTests` to keep the class name unambiguous), `AgentRunsTests`, `ApprovalsTests`, `SettingsTests`, `IntegrationsTests`, `HomeTests`) confirming its `PageHeader` title and `EmptyState` title render, plus `DesignTests` (covers AC-3: all 10 in-scope components have a card on `/design`, and the page's example Modal starts closed and opens on click). Written and run one file at a time; all green immediately, no real bugs found.
+```
+Total tests: 55
+     Passed: 55
+```
+`dotnet format --verify-no-changes` stays clean. Nothing left uncovered for this feature beyond the JS-interop/server-rendering items noted above.
 
 ### 5. Auth & app shell · needs a decision
 Single user authentication, secure sessions, and the persistent shell (sidebar, top bar, command palette shortcut, global search stub) every screen mounts inside.

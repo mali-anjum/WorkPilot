@@ -1,0 +1,13 @@
+@namespace WorkPilot.Web.Client.Shared
+
+<span class="wp-badge wp-badge--@Status.ToString().ToLowerInvariant()">
+    @ChildContent
+</span>
+
+@code {
+    /// <summary>The semantic status this badge represents; maps to a token color.</summary>
+    [Parameter] public StatusKind Status { get; set; } = StatusKind.Neutral;
+
+    /// <summary>The badge's label content.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

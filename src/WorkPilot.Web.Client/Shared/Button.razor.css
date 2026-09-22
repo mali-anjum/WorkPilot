@@ -1,0 +1,56 @@
+.wp-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.wp-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Size */
+.wp-button--sm { padding: var(--space-1) var(--space-3); font-size: var(--text-sm); }
+.wp-button--md { padding: var(--space-2) var(--space-4); font-size: var(--text-base); }
+.wp-button--lg { padding: var(--space-3) var(--space-5); font-size: var(--text-lg); }
+
+/* Variant */
+.wp-button--primary {
+    background: var(--color-accent);
+    color: var(--color-accent-contrast);
+}
+.wp-button--primary:not(:disabled):hover {
+    filter: brightness(1.1);
+}
+
+.wp-button--secondary {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-text);
+}
+.wp-button--secondary:not(:disabled):hover {
+    border-color: var(--color-accent);
+}
+
+.wp-button--danger {
+    background: var(--color-danger);
+    color: var(--color-accent-contrast);
+}
+.wp-button--danger:not(:disabled):hover {
+    filter: brightness(1.1);
+}
+
+.wp-button--ghost {
+    background: transparent;
+    color: var(--color-text);
+}
+.wp-button--ghost:not(:disabled):hover {
+    background: var(--color-surface);
+}

@@ -1,0 +1,17 @@
+@namespace WorkPilot.Web.Client.Shared
+
+<header class="wp-page-header">
+    <h1 class="wp-page-header__title">@Title</h1>
+    @if (!string.IsNullOrWhiteSpace(Description))
+    {
+        <p class="wp-page-header__description">@Description</p>
+    }
+</header>
+
+@code {
+    /// <summary>The page's title, rendered as the page's h1.</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>Optional one line description shown under the title.</summary>
+    [Parameter] public string? Description { get; set; }
+}

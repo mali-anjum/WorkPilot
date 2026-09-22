@@ -1,0 +1,84 @@
+/* Design tokens — spec 0003 (docs/specs/0003-design-system-ui-foundation.md).
+   Dark is the default theme; [data-theme="light"] overrides the color group only. */
+
+:root,
+[data-theme="dark"] {
+    --color-bg: #0b0d10;
+    --color-surface: #14171c;
+    --color-border: #262b33;
+    --color-text: #e6e9ee;
+    --color-text-muted: #9aa4b2;
+    --color-accent: #4f8cff;
+    --color-accent-contrast: #ffffff;
+
+    --color-success: #2ea043;
+    --color-warning: #d29922;
+    --color-danger: #da3633;
+    --color-info: #4f8cff;
+}
+
+[data-theme="light"] {
+    --color-bg: #ffffff;
+    --color-surface: #f6f7f9;
+    --color-border: #e2e5ea;
+    --color-text: #14171c;
+    --color-text-muted: #5b6472;
+    --color-accent: #2f6fe0;
+    --color-accent-contrast: #ffffff;
+}
+
+:root {
+    /* Spacing (4px base) */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
+    --space-8: 64px;
+
+    /* Type (system font stack) */
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --text-xs: 12px;
+    --text-sm: 14px;
+    --text-base: 16px;
+    --text-lg: 18px;
+    --text-xl: 20px;
+    --text-2xl: 24px;
+    --text-3xl: 30px;
+    --line-height-body: 1.5;
+
+    /* Radius */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+
+    /* Z-index layers */
+    --z-dropdown: 100;
+    --z-modal: 200;
+    --z-toast: 300;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--line-height-body);
+}
+
+a {
+    color: var(--color-accent);
+}
+
+:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}

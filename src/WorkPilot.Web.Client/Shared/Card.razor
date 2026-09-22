@@ -1,0 +1,19 @@
+@namespace WorkPilot.Web.Client.Shared
+
+<section class="wp-card">
+    @if (!string.IsNullOrWhiteSpace(Title))
+    {
+        <h2 class="wp-card__title">@Title</h2>
+    }
+    <div class="wp-card__body">
+        @ChildContent
+    </div>
+</section>
+
+@code {
+    /// <summary>Optional heading rendered above the card body.</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>The card's content.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

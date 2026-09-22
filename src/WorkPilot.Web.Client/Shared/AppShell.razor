@@ -1,0 +1,22 @@
+@namespace WorkPilot.Web.Client.Shared
+
+<div class="wp-app-shell">
+    <Sidebar />
+    <div class="wp-app-shell__main">
+        <TopBar InitialTheme="@InitialTheme" />
+        <main class="wp-app-shell__content">
+            @ChildContent
+        </main>
+    </div>
+    <CommandPalette @bind-IsOpen="_commandPaletteOpen" />
+</div>
+
+@code {
+    private bool _commandPaletteOpen;
+
+    /// <summary>The theme resolved server side at first paint, passed down so the toggle starts in sync.</summary>
+    [Parameter] public string InitialTheme { get; set; } = "dark";
+
+    /// <summary>The routed page content.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

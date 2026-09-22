@@ -1,0 +1,28 @@
+.wp-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: var(--space-2);
+    padding: var(--space-8) var(--space-5);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    color: var(--color-text-muted);
+}
+
+.wp-empty-state__icon {
+    font-size: var(--text-3xl);
+}
+
+.wp-empty-state__title {
+    margin: 0;
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.wp-empty-state__description {
+    margin: 0;
+    max-width: 40ch;
+}

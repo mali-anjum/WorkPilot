@@ -1,0 +1,37 @@
+.wp-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    line-height: 1;
+    border: 1px solid transparent;
+}
+
+.wp-badge--neutral {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-text-muted);
+}
+
+.wp-badge--success {
+    background: color-mix(in srgb, var(--color-success) 18%, transparent);
+    color: var(--color-success);
+}
+
+.wp-badge--warning {
+    background: color-mix(in srgb, var(--color-warning) 18%, transparent);
+    color: var(--color-warning);
+}
+
+.wp-badge--danger {
+    background: color-mix(in srgb, var(--color-danger) 18%, transparent);
+    color: var(--color-danger);
+}
+
+.wp-badge--info {
+    background: color-mix(in srgb, var(--color-info) 18%, transparent);
+    color: var(--color-info);
+}

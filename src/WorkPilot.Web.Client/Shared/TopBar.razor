@@ -1,0 +1,32 @@
+@namespace WorkPilot.Web.Client.Shared
+@inject IJSRuntime JS
+
+<header class="wp-topbar">
+    <div class="wp-topbar__hint">Press <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>K</kbd> to search</div>
+    <Button Variant="ButtonVariant.Secondary"
+            Size="ButtonSize.Sm"
+            AriaLabel="@(_theme == "dark" ? "Switch to light mode" : "Switch to dark mode")"
+            OnClick="ToggleTheme">
+        @(_theme == "dark" ? "☾ Dark" : "☀ Light")
+    </Button>
+</header>
+
+@code {
+    private string _theme = "dark";
+    private IJSObjectReference? _module;
+
+    /// <summary>The theme read server side at first paint (from <c>App.razor</c>), so the toggle starts in sync.</summary>
+    [Parameter] public string InitialTheme { get; set; } = "dark";
+
+    protected override void OnInitialized()
+    {
+        _theme = InitialTheme;
+    }
+
+    private async Task ToggleTheme()
+    {
+        _theme = _theme == "dark" ? "light" : "dark";
+        _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/interop.js");
+        await _module.InvokeVoidAsync("setTheme", _theme);
+    }
+}

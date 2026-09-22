@@ -15,5 +15,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/WorkPilot.Api.Tests/WorkPilot.Api.Tests.csproj" />
     <Project Path="tests/WorkPilot.Domain.Tests/WorkPilot.Domain.Tests.csproj" />
+    <Project Path="tests/WorkPilot.Web.Tests/WorkPilot.Web.Tests.csproj" />
   </Folder>
 </Solution>

@@ -1,0 +1,102 @@
+@namespace WorkPilot.Web.Client.Shared
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (IsOpen)
+{
+    <div class="wp-modal-backdrop" @onclick="Close">
+        <div class="wp-command-palette"
+             role="dialog"
+             aria-modal="true"
+             aria-label="Command palette"
+             @onclick:stopPropagation="true"
+             @onkeydown="OnKeyDown"
+             @ref="_dialogRef">
+            <input class="wp-command-palette__input"
+                   type="text"
+                   placeholder="Search... (no results yet)"
+                   aria-label="Search commands" />
+        </div>
+    </div>
+}
+
+@code {
+    private ElementReference _dialogRef;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _focusTrap;
+    private IJSObjectReference? _shortcut;
+    private DotNetObjectReference<CommandPalette>? _selfRef;
+
+    /// <summary>Whether the palette is open.</summary>
+    [Parameter] public bool IsOpen { get; set; }
+
+    /// <summary>Two way binding companion for <see cref="IsOpen"/>.</summary>
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/interop.js");
+            _selfRef = DotNetObjectReference.Create(this);
+            _shortcut = await _module.InvokeAsync<IJSObjectReference>("registerCommandPaletteShortcut", _selfRef);
+        }
+
+        if (IsOpen && _focusTrap is null && _module is not null)
+        {
+            _focusTrap = await _module.InvokeAsync<IJSObjectReference>("trapFocus", _dialogRef);
+        }
+        else if (!IsOpen && _focusTrap is not null)
+        {
+            await ReleaseFocusTrapAsync();
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnShortcut()
+    {
+        IsOpen = true;
+        await IsOpenChanged.InvokeAsync(true);
+        StateHasChanged();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await Close();
+        }
+    }
+
+    private async Task Close()
+    {
+        await ReleaseFocusTrapAsync();
+        IsOpen = false;
+        await IsOpenChanged.InvokeAsync(false);
+    }
+
+    private async Task ReleaseFocusTrapAsync()
+    {
+        if (_focusTrap is not null)
+        {
+            await _focusTrap.InvokeVoidAsync("dispose");
+            await _focusTrap.DisposeAsync();
+            _focusTrap = null;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await ReleaseFocusTrapAsync();
+        if (_shortcut is not null)
+        {
+            await _shortcut.InvokeVoidAsync("dispose");
+            await _shortcut.DisposeAsync();
+        }
+        if (_module is not null)
+        {
+            await _module.DisposeAsync();
+        }
+        _selfRef?.Dispose();
+    }
+}
