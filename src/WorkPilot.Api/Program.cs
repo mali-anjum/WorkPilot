@@ -1,9 +1,17 @@
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
+using WorkPilot.AI.Agent;
+using WorkPilot.Application.Modules.Agent;
 using WorkPilot.Application.Modules.Identity;
+using WorkPilot.Domain.Modules.Agent;
+using WorkPilot.Domain.Modules.Approvals;
+using WorkPilot.Infrastructure.Modules.Agent;
+using WorkPilot.Infrastructure.Modules.Agent.Tools;
 using WorkPilot.Infrastructure.Modules.Identity;
 using WorkPilot.Infrastructure.Persistence;
+using WorkPilot.Workers.Agent;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +46,21 @@ builder.AddNpgsqlDbContext<WorkPilotDbContext>("workpilotdb");
 // internal endpoint over the Aspire service discovery network rather than
 // touching EF Core itself (docs/specs/0004-auth-app-shell.md).
 builder.Services.AddScoped<IProfileProvisioningService, ProfileProvisioningService>();
+
+// Agent orchestrator core (docs/specs/0005-agent-orchestrator-core.md): Planner ->
+// Policy Engine -> Tool Registry -> Execution Engine -> Verification Engine ->
+// Approval Engine -> Audit. FakeChatClient stands in until scope item 7 ("AI
+// provider abstraction") picks and wires a real IChatClient.
+builder.Services.AddSingleton<IChatClient, FakeChatClient>();
+builder.Services.AddScoped<IPlanner, ChatClientPlanner>();
+builder.Services.AddScoped<IPolicyEngine, PolicyEngine>();
+builder.Services.AddScoped<IVerificationEngine, VerificationEngine>();
+builder.Services.AddScoped<IAuditService, AuditService>();
+builder.Services.AddScoped<IToolRegistry, ToolRegistry>();
+builder.Services.AddScoped<ITool, ListMyProfileTool>();
+builder.Services.AddScoped<ITool, ApprovalRequiredDemoTool>();
+builder.Services.AddScoped<PlanRunJob>();
+builder.Services.AddScoped<AdvanceRunJob>();
 
 // Hangfire, storage in the same Postgres database as EF Core (per spec:
 // "Background jobs / workflows | Hangfire, storage in the same Postgres
@@ -119,6 +142,127 @@ app.MapPost("/internal/identity/profile", async (
     return Results.Ok(new ResolveProfileResponse(profileId));
 });
 
+// Internal only (same network boundary as /internal/identity/profile above).
+// Triggers a run and returns immediately: planning and execution both happen
+// in background jobs, never inline in the request, so a restart never leaves
+// a run stuck mid-request (docs/specs/0005-agent-orchestrator-core.md, AC-1, AC-9).
+app.MapPost("/internal/agent/runs", async (
+    TriggerAgentRunRequest request,
+    WorkPilotDbContext db,
+    IBackgroundJobClient jobs,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Goal))
+    {
+        return Results.BadRequest();
+    }
+
+    var profileExists = await db.Profiles.AnyAsync(p => p.Id == request.ProfileId, cancellationToken);
+    if (!profileExists)
+    {
+        return Results.NotFound();
+    }
+
+    var workflow = new WorkflowInstance { DefinitionName = "AgentRun", Status = AgentRunStatus.Planning.ToString() };
+    db.WorkflowInstances.Add(workflow);
+
+    var run = new AgentRun
+    {
+        WorkflowInstanceId = workflow.Id,
+        ProfileId = request.ProfileId,
+        Goal = request.Goal,
+    };
+    db.AgentRuns.Add(run);
+    await db.SaveChangesAsync(cancellationToken);
+
+    jobs.Enqueue<PlanRunJob>(j => j.RunAsync(run.Id));
+
+    return Results.Accepted(value: new TriggerAgentRunResponse(run.Id, run.Status.ToString()));
+});
+
+app.MapGet("/internal/agent/runs/{id:guid}", async (Guid id, WorkPilotDbContext db, CancellationToken cancellationToken) =>
+{
+    var run = await db.AgentRuns
+        .Include(r => r.Steps.OrderBy(s => s.Ordinal))
+        .ThenInclude(s => s.ToolCalls)
+        .AsNoTracking()
+        .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+
+    if (run is null)
+    {
+        return Results.NotFound();
+    }
+
+    var steps = run.Steps
+        .Select(s => new AgentRunStepView(s.Ordinal, s.ToolName, s.Status.ToString(), s.ToolCalls.Count > 0 ? s.ToolCalls[^1].Success : null))
+        .ToList();
+
+    return Results.Ok(new AgentRunView(run.Id, run.Status.ToString(), steps));
+});
+
+// Internal only. The minimal decision hook the real Approval Center (scope
+// item 8) will build on top of: an atomic UPDATE guards against a double
+// decision (409) rather than a load-then-save race (AC-10).
+app.MapPost("/internal/agent/approvals/{id:guid}/decide", async (
+    Guid id,
+    DecideApprovalRequest request,
+    WorkPilotDbContext db,
+    IBackgroundJobClient jobs,
+    IAuditService audit,
+    CancellationToken cancellationToken) =>
+{
+    if (request.Decision is not ("Approve" or "Reject"))
+    {
+        return Results.BadRequest();
+    }
+
+    var newStatus = request.Decision == "Approve" ? ApprovalStatus.Approved : ApprovalStatus.Rejected;
+    var decidedAt = DateTimeOffset.UtcNow;
+
+    var updated = await db.Approvals
+        .Where(a => a.Id == id && a.Status == ApprovalStatus.Pending)
+        .ExecuteUpdateAsync(
+            setters => setters
+                .SetProperty(a => a.Status, newStatus)
+                .SetProperty(a => a.DecidedBy, request.DecidedBy)
+                .SetProperty(a => a.DecidedAt, decidedAt),
+            cancellationToken);
+
+    if (updated == 0)
+    {
+        var exists = await db.Approvals.AnyAsync(a => a.Id == id, cancellationToken);
+        return exists ? Results.Conflict() : Results.NotFound();
+    }
+
+    var approval = await db.Approvals.AsNoTracking().FirstAsync(a => a.Id == id, cancellationToken);
+    var step = await db.AgentSteps.FirstAsync(s => s.Id == approval.TargetId, cancellationToken);
+    var run = await db.AgentRuns.FirstAsync(r => r.Id == step.AgentRunId, cancellationToken);
+
+    audit.Record("Agent", $"Approval{newStatus}", ApprovalTargets.AgentStep, step.Id, null);
+
+    var resumed = newStatus == ApprovalStatus.Approved;
+    if (resumed)
+    {
+        step.TransitionTo(AgentStepStatus.Running);
+        run.TransitionTo(AgentRunStatus.Executing);
+    }
+    else
+    {
+        step.TransitionTo(AgentStepStatus.Skipped);
+        run.TransitionTo(AgentRunStatus.Failed);
+    }
+
+    await WorkflowMirror.SyncAsync(db, run, cancellationToken);
+    await db.SaveChangesAsync(cancellationToken);
+
+    if (resumed)
+    {
+        jobs.Enqueue<AdvanceRunJob>(j => j.RunAsync(run.Id));
+    }
+
+    return Results.Ok(new DecideApprovalResponse(approval.Id, newStatus.ToString(), resumed));
+});
+
 app.Run();
 
 /// <summary>Request body for <c>POST /internal/identity/profile</c>.</summary>
@@ -126,3 +270,21 @@ internal sealed record ResolveProfileRequest(Guid AuthUserId, string Email);
 
 /// <summary>Response body for <c>POST /internal/identity/profile</c>.</summary>
 internal sealed record ResolveProfileResponse(Guid ProfileId);
+
+/// <summary>Request body for <c>POST /internal/agent/runs</c>.</summary>
+internal sealed record TriggerAgentRunRequest(string Goal, Guid ProfileId);
+
+/// <summary>Response body for <c>POST /internal/agent/runs</c>.</summary>
+internal sealed record TriggerAgentRunResponse(Guid AgentRunId, string Status);
+
+/// <summary>One step as reported by <c>GET /internal/agent/runs/{id}</c>.</summary>
+internal sealed record AgentRunStepView(int Ordinal, string ToolName, string Status, bool? Success);
+
+/// <summary>Response body for <c>GET /internal/agent/runs/{id}</c>.</summary>
+internal sealed record AgentRunView(Guid AgentRunId, string Status, IReadOnlyList<AgentRunStepView> Steps);
+
+/// <summary>Request body for <c>POST /internal/agent/approvals/{id}/decide</c>.</summary>
+internal sealed record DecideApprovalRequest(string Decision, Guid DecidedBy);
+
+/// <summary>Response body for <c>POST /internal/agent/approvals/{id}/decide</c>.</summary>
+internal sealed record DecideApprovalResponse(Guid ApprovalId, string Status, bool Resumed);

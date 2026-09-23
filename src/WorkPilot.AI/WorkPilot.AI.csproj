@@ -5,6 +5,13 @@
     <ProjectReference Include="..\WorkPilot.Contracts\WorkPilot.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Provider agnostic AI abstraction (docs/specs/0005-agent-orchestrator-core.md);
+         which real provider implements IChatClient is scope item 7 ("AI provider
+         abstraction"), not yet decided, so only a fake/stub client is registered here. -->
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.10.0" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
