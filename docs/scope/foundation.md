@@ -140,10 +140,20 @@ One pre-existing, unrelated test failure noted, not caused by this build: `WorkP
 
 `/test` (2026-09-22): 15 new tests, all passing. `tests/WorkPilot.Api.Tests/IdentityProfileEndpointTests.cs` (2 tests, integration, against the real Postgres): `POST /internal/identity/profile` creates a `Profile` row on a first ever sign in (name derived from the email's local part) and returns the same `ProfileId` idempotently on a second call for the same `AuthUserId`, never creating a second row (spec 0004, Value sourcing: `profileId`). `tests/WorkPilot.Web.Tests/AuthEndpointsTests.cs` (13 tests, unit, via reflection since the helpers are private): `SafeLocalRedirectTarget` (open redirect prevention, AC-1 and the API surface's `Url.IsLocalUrl`/no `//`-prefix rule) and `Html` (XSS-safe encoding of untrusted form input echoed back into the sign in/reset pages). Not covered by an automated test, deferred to `/check verify`'s live steps: the sign in/sign out/reset flows themselves (need a live GoTrue, a live session cookie, and the Data Protection key ring; see `verify.md`), and AC-3/AC-7/AC-8, which are runtime/config properties rather than something a unit or integration test can pin down. `dotnet test` (full suite) and `dotnet format --verify-no-changes` both clean.
 
-### 6. Agent orchestrator core · needs a decision · GA
+### 6. Agent orchestrator core · GA
 The shared machinery every domain agent runs on: Planner, Policy Engine, Tool Registry, Workflow Engine, Approval Engine, Memory, Execution Engine, Verification Engine. Tools declare name, schema, required permissions, risk level, approval requirement, timeout, retry policy, audit policy. Workflows persist step by step, never rely on an in-memory process surviving. The LLM never mutates important state directly, only through tools; it never receives passwords, OAuth tokens, refresh tokens, client secrets, or session cookies.
 **Done when:** a trivial end to end tool call (e.g. "list my profile") runs through Planner -> Policy Engine -> Tool Registry -> Execution -> Verification -> Audit, is durably persisted as an AgentRun/AgentSteps/ToolCalls, and survives a process restart mid run.
-- [ ] Design it (spec): `/architect agent orchestrator core`
+- [x] Design it (spec): `/architect agent orchestrator core` → [0005](../specs/0005-agent-orchestrator-core/index.md)
+- [x] Build it: `/develop agent orchestrator core`
+  - [x] Migration + `ITool` contract, Tool Registry, and the two milestone tools (auto-allowed "list my profile", approval-required dummy) (AC-1, AC-2, AC-3, AC-4, AC-6, AC-9)
+  - [x] Planner (`PlanRun` job) + Policy Engine (upfront plan validation) (AC-1, AC-2, AC-7)
+  - [x] Execution Engine (`AdvanceRun` job) + Verification Engine + Audit wiring (AC-3, AC-5, AC-8, AC-9)
+  - [x] Trigger/status/decide endpoints (`/internal/agent/runs`, `/internal/agent/approvals/{id}/decide`) + Approval Engine suspend/resume (AC-4, AC-10)
+  - [x] Prove the auto-allowed and approval-required threads live; AC-9's crash scenarios and AC-10's true concurrent case are code-level guarded but not yet exercised by an actual kill/race, left for `/check verify` (AC-1, AC-3, AC-4, AC-5, AC-6)
+- [ ] Verify it: `/check verify agent orchestrator core`
+- [ ] Test it: `/test agent orchestrator core`
+- [ ] Review it (fresh model): `/check review agent orchestrator core`
+- [ ] Document it: `/document agent orchestrator core`
 
 ### 7. AI provider abstraction · needs a decision
 `IAiProvider`-style interface so no domain logic hardcodes a single vendor. Must support at least two swappable providers per the spec (e.g. OpenAI-compatible and DeepSeek-compatible), routed through the AI Gateway pattern appropriate to the chosen stack.
