@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using WorkPilot.AI.Providers;
 using WorkPilot.Application.Modules.Agent;
@@ -171,6 +172,82 @@ public class AiProviderTests
         Assert.True(ex.Message.Length <= 500);
     }
 
+    [Theory]
+    [InlineData(401)]
+    [InlineData(402)]
+    [InlineData(404)]
+    public async Task NonTransientErrors_FailOnTheFirstAttempt_WithoutRetrying(int status)
+    {
+        // covers AC-5: only transient failures are retried; a bad key, no credit,
+        // or a retired model fails at once (seen live: OpenAI 401, DeepSeek 402, Gemini 404).
+        await using var stub = await StubOpenAiServer.StartAsync([], new StubReply(status));
+        using var services = AiTestServices.Build(AiTestServices.SingleProvider("deepseek", stub.Endpoint, "deepseek-chat"));
+
+        var ex = await Assert.ThrowsAsync<AiProviderException>(() => PlanAsync(services));
+
+        Assert.Single(stub.Requests);
+        Assert.Contains(status.ToString(), ex.Message);
+    }
+
+    [Fact]
+    public async Task GeminiStyleArrayErrorBody_IsStillAProviderFailure()
+    {
+        // covers AC-6: Gemini wraps its error in a JSON array, which the SDK can't
+        // parse; the failure must still name the provider, model, and status.
+        await using var stub = await StubOpenAiServer.StartAsync([], new StubReply(404,
+            ErrorBody: """[{"error":{"code":404,"message":"This model is no longer available to new users.","status":"NOT_FOUND"}}]"""));
+        using var services = AiTestServices.Build(AiTestServices.SingleProvider("gemini", stub.Endpoint, "gemini-2.5-flash"));
+
+        var ex = await Assert.ThrowsAsync<AiProviderException>(() => PlanAsync(services));
+
+        Assert.Equal("gemini", ex.Provider);
+        Assert.Equal("gemini-2.5-flash", ex.Model);
+        Assert.Contains("404", ex.Message);
+    }
+
+    [Fact]
+    public async Task ProviderError_NeverCarriesAGeminiStyleKey()
+    {
+        // covers the key invariant for keys the pattern doesn't know (Gemini's "AQ." format):
+        // the configured key itself is always scrubbed.
+        const string key = "AQ.Ab8-test-GEMINISECRET-0123456789";
+        await using var stub = await StubOpenAiServer.StartAsync([], new StubReply(400,
+            ErrorBody: $$$"""{"error":{"message":"API key not valid: {{{key}}}","type":"invalid_request_error"}}"""));
+        using var services = AiTestServices.Build(AiTestServices.SingleProvider("gemini", stub.Endpoint, "gemini-3.8-flash", apiKey: key));
+
+        var ex = await Assert.ThrowsAsync<AiProviderException>(() => PlanAsync(services));
+
+        Assert.DoesNotContain("GEMINISECRET", ex.Message);
+    }
+
+    [Fact]
+    public async Task StartupReporter_WarnsForEachFakePurpose()
+    {
+        // covers AC-3: a deployment still on the Fake provider is obvious in the startup log.
+        var logs = new CapturingLoggerProvider();
+        using var services = AiTestServices.Build(new Dictionary<string, string?> { ["Ai:Purposes:Default:Provider"] = "Fake" }, logs);
+
+        await StartHostedServicesAsync(services);
+
+        Assert.Contains(logs.Messages, m => m.Contains("AI purpose Default uses the Fake provider"));
+        Assert.Contains(logs.Messages, m => m.Contains("AI purpose Planner uses the Fake provider"));
+    }
+
+    [Fact]
+    public async Task StartupReporter_NamesTheRealProviderAndModel_ButNeverTheKey()
+    {
+        // covers AC-3, AC-4: the resolved target per purpose is logged; the key is not.
+        const string key = "sk-test-STARTUPSECRET-0123456789";
+        var logs = new CapturingLoggerProvider();
+        using var services = AiTestServices.Build(AiTestServices.SingleProvider("openai", "https://api.openai.com/v1", "gpt-4o-mini", apiKey: key), logs);
+
+        await StartHostedServicesAsync(services);
+
+        Assert.Contains(logs.Messages, m => m.Contains("AI purpose Planner: provider openai, model gpt-4o-mini"));
+        Assert.DoesNotContain(logs.Messages, m => m.Contains("Fake provider"));
+        Assert.DoesNotContain(logs.Messages, m => m.Contains("STARTUPSECRET"));
+    }
+
     [Fact]
     public async Task CallerCancellation_PassesThroughUntranslated()
     {
@@ -251,6 +328,14 @@ public class AiProviderTests
     {
         using var scope = services.CreateScope();
         return await scope.ServiceProvider.GetRequiredService<IPlanner>().PlanAsync("list my profile", Tools, CancellationToken.None);
+    }
+
+    private static async Task StartHostedServicesAsync(ServiceProvider services)
+    {
+        foreach (var hosted in services.GetServices<IHostedService>())
+        {
+            await hosted.StartAsync(CancellationToken.None);
+        }
     }
 
     private static Task<AiHealthResult> ProbeAsync(ServiceProvider services) => AiHealthProbe.RunAsync(

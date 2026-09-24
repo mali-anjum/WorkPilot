@@ -168,8 +168,8 @@ The shared machinery every domain agent runs on: Planner, Policy Engine, Tool Re
   - [x] Fail fast config validation and the Fake startup warning (AC-3, AC-4)
   - [x] Retries, timeouts, provider error translation, `PlanningFailed` audit, fenced JSON tolerance (AC-5, AC-6, AC-9)
   - [x] Telemetry with the sensitive data flag, and the `/health/ai` probe (AC-7, AC-8)
-- [ ] Verify it: `/check verify AI provider abstraction`
-- [ ] Test it: `/test AI provider abstraction`
+- [ ] Verify it: `/check verify AI provider abstraction` (blocked 2026-09-25: Gemini passed live; OpenAI and DeepSeek accounts have no credit, Ollama not installed; see verify.md)
+- [x] Test it: `/test AI provider abstraction`
 
 Code in `src/WorkPilot.AI/Providers/`, `src/WorkPilot.AI/Agent/ChatClientPlanner.cs`, `src/WorkPilot.Workers/Agent/PlanRunJob.cs`, `/health/ai` in `src/WorkPilot.Api/Program.cs`. `/develop` (2026-09-24): builds on the superseded single `ActiveProvider` draft (`ca32dfc`), reworked to spec 0006. `dotnet test` 186/186 (Domain 47, Web 68, Api 71, 40 of them new for this feature against an in process OpenAI compatible stub server), `dotnet format --verify-no-changes` clean. Build plan task 7 (the live proof across OpenAI, Gemini, DeepSeek, and Ollama) is left for `/check verify`.
 
