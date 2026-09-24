@@ -30,6 +30,8 @@ dotnet build WorkPilot.slnx
 dotnet test WorkPilot.slnx
 ```
 
+`WorkPilot.Api.Tests` run against a real Postgres and fail fast without `WORKPILOTDB_CONNECTION`: start it with `docker compose up -d db` in `supabase/`, then e.g. `export WORKPILOTDB_CONNECTION="Host=localhost;Port=5433;Database=postgres;Username=postgres;Password=<POSTGRES_PASSWORD from supabase/.env>"`. The Api applies EF Core migrations itself on startup, so an empty database works.
+
 Self hosted Supabase stack (Postgres, GoTrue, Storage): `docker compose up` in `supabase/` (see `supabase/.env.example`).
 
 ## Specs
