@@ -5,7 +5,7 @@ The walking skeleton of the whole product: discover a real job, know why it matc
 ### 9. Job source ingestion & normalization · needs a decision
 `IJobSource` interface; at least one real source wired end to end; raw job -> normalizer -> canonical Job + JobSnapshot with provenance (source URL, retrieved/verified timestamps).
 **Done when:** a real search against one live source produces canonical Job rows with provenance fields populated.
-- [ ] Design it (spec): `/architect job source ingestion & normalization`
+- [x] Design it (spec): `/architect job source ingestion & normalization` → [0008](../specs/0008-job-source-ingestion/index.md)
 
 ### 10. Job deduplication
 Same job from multiple sources collapses to one canonical Job with multiple source links, never duplicate applications.
