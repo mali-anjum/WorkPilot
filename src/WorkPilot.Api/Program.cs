@@ -238,12 +238,17 @@ app.MapPost("/internal/agent/approvals/{id:guid}/decide", async (
     var step = await db.AgentSteps.FirstAsync(s => s.Id == approval.TargetId, cancellationToken);
     var run = await db.AgentRuns.FirstAsync(r => r.Id == step.AgentRunId, cancellationToken);
 
-    audit.Record("Agent", $"Approval{newStatus}", ApprovalTargets.AgentStep, step.Id, null);
+    // Spec 0005's data mapping: an approval's creation is audited as "Agent",
+    // but its decision is audited as the deciding profile.
+    audit.Record(request.DecidedBy.ToString(), $"Approval{newStatus}", ApprovalTargets.AgentStep, step.Id, null);
 
     var resumed = newStatus == ApprovalStatus.Approved;
     if (resumed)
     {
-        step.TransitionTo(AgentStepStatus.Running);
+        // The step stays AwaitingApproval here: AdvanceRunJob moves it to
+        // Running right before executing, so "Running" keeps meaning "the
+        // tool may have started" and a non-idempotent approved tool isn't
+        // mistaken for one that crashed mid-execution (AC-9).
         run.TransitionTo(AgentRunStatus.Executing);
     }
     else

@@ -124,7 +124,7 @@ public class AgentOrchestratorEndpointsTests(SharedApiFactory factory)
 
             using var scope = factory.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<WorkPilotDbContext>();
-            Assert.Equal(AgentStepStatus.Running, (await db.AgentSteps.SingleAsync(s => s.Id == stepId)).Status);
+            Assert.Equal(AgentStepStatus.AwaitingApproval, (await db.AgentSteps.SingleAsync(s => s.Id == stepId)).Status); // AdvanceRunJob moves it to Running
             Assert.Equal(AgentRunStatus.Executing, (await db.AgentRuns.SingleAsync(r => r.Id == runId)).Status);
         }
         finally
@@ -154,6 +154,35 @@ public class AgentOrchestratorEndpointsTests(SharedApiFactory factory)
             var db = scope.ServiceProvider.GetRequiredService<WorkPilotDbContext>();
             Assert.Equal(AgentStepStatus.Skipped, (await db.AgentSteps.SingleAsync(s => s.Id == stepId)).Status);
             Assert.Equal(AgentRunStatus.Failed, (await db.AgentRuns.SingleAsync(r => r.Id == runId)).Status);
+        }
+        finally
+        {
+            await CleanupAsync(factory, profileId);
+        }
+    }
+
+    [Theory]
+    [InlineData("Approve", "ApprovalApproved")]
+    [InlineData("Reject", "ApprovalRejected")]
+    public async Task DecideApproval_AuditsTheDecisionWithTheDecidingProfileAsActor(string decision, string expectedAction)
+    {
+        // covers AC-5: spec 0005's data mapping audits a decision as the deciding ProfileId, not "Agent".
+        using var client = factory.CreateClient();
+        var profileId = await CreateProfileAsync(factory);
+        var (_, stepId, approvalId) = await SeedAwaitingApprovalRunAsync(factory, profileId);
+
+        try
+        {
+            var response = await client.PostAsJsonAsync(
+                $"/internal/agent/approvals/{approvalId}/decide",
+                new { Decision = decision, DecidedBy = profileId });
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var scope = factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<WorkPilotDbContext>();
+            var audit = await db.AuditLogs.SingleAsync(a => a.TargetId == stepId && a.Action == expectedAction);
+            Assert.Equal(profileId.ToString(), audit.Actor);
+            Assert.Equal(ApprovalTargets.AgentStep, audit.TargetType);
         }
         finally
         {
@@ -236,6 +265,8 @@ public class AgentOrchestratorEndpointsTests(SharedApiFactory factory)
         var stepIds = await db.AgentSteps.Where(s => runIds.Contains(s.AgentRunId)).Select(s => s.Id).ToListAsync();
         var workflowIds = await db.AgentRuns.Where(r => r.ProfileId == profileId).Select(r => r.WorkflowInstanceId).ToListAsync();
 
+        // AuditLog is append only in the product, but these rows are test fixtures, so they are hard deleted here.
+        await db.AuditLogs.IgnoreQueryFilters().Where(a => stepIds.Contains(a.TargetId)).ExecuteDeleteAsync();
         await db.ToolCalls.Where(t => stepIds.Contains(t.AgentStepId)).ExecuteDeleteAsync();
         await db.Approvals.Where(a => a.TargetType == ApprovalTargets.AgentStep && stepIds.Contains(a.TargetId)).ExecuteDeleteAsync();
         await db.AgentSteps.Where(s => runIds.Contains(s.AgentRunId)).ExecuteDeleteAsync();

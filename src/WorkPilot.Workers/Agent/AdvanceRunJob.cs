@@ -39,7 +39,7 @@ public sealed class AdvanceRunJob(
             return; // nothing to do; a re-delivered job for an already terminal (or gone) run is a no-op
         }
 
-        var next = run.Steps.FirstOrDefault(s => s.Status is AgentStepStatus.Pending or AgentStepStatus.Running);
+        var next = run.Steps.FirstOrDefault(s => s.Status is AgentStepStatus.Pending or AgentStepStatus.AwaitingApproval or AgentStepStatus.Running);
         if (next is null)
         {
             run.TransitionTo(AgentRunStatus.Completed);
@@ -69,6 +69,19 @@ public sealed class AdvanceRunJob(
                 await db.SaveChangesAsync();
                 break;
 
+            case AgentStepStatus.AwaitingApproval:
+                var approved = await db.Approvals.AnyAsync(a =>
+                    a.TargetType == ApprovalTargets.AgentStep && a.TargetId == next.Id && a.Status == ApprovalStatus.Approved);
+                if (!approved)
+                {
+                    return; // still waiting on a decision; the decide endpoint re-enqueues this run
+                }
+
+                next.TransitionTo(AgentStepStatus.Running);
+                // Same commit-before-execute as the Pending path (AC-9).
+                await db.SaveChangesAsync();
+                break;
+
             case AgentStepStatus.Running when !tool.IsIdempotent:
                 // A prior invocation of this job died mid-execution. Re-running
                 // a non-idempotent tool risks a double side effect, so this
@@ -93,7 +106,11 @@ public sealed class AdvanceRunJob(
             ToolName = tool.Name,
             Success = verified,
         });
-        audit.Record("Agent", tool.Name, tool.TargetType ?? ApprovalTargets.AgentStep, result.TargetId ?? next.Id, result.OutputJson ?? result.Error);
+        // AuditLog.Payload is jsonb: OutputJson is already valid JSON (or
+        // null, fine for jsonb), but Error is plain human-readable text, so
+        // it has to be wrapped as JSON before it can land in that column.
+        var payload = result.OutputJson ?? (result.Error is null ? null : JsonSerializer.Serialize(new { error = result.Error }));
+        audit.Record("Agent", tool.Name, tool.TargetType ?? ApprovalTargets.AgentStep, result.TargetId ?? next.Id, payload);
 
         if (verified)
         {
