@@ -22,8 +22,12 @@ public class EntityBaseTests
     public void Entity_IdsAreTimeOrdered()
     {
         // uuid v7 (spec 0002): later constructed entities sort after earlier
-        // ones, which plain random GUIDs (v4) would not guarantee.
+        // ones, which plain random GUIDs (v4) would not guarantee. The order
+        // is only guaranteed across milliseconds (two ids from the same
+        // millisecond differ in random bits), so the second id is made after
+        // the clock has moved on.
         var first = new TestEntity();
+        Thread.Sleep(2);
         var second = new TestEntity();
 
         Assert.True(second.Id.CompareTo(first.Id) > 0);
