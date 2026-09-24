@@ -159,10 +159,17 @@ The shared machinery every domain agent runs on: Planner, Policy Engine, Tool Re
 
 `/check verify` (2026-09-24, re-run): PASS after one fix; see [verify.md](../specs/0005-agent-orchestrator-core/verify.md). Driven live against the Api and a fresh Postgres: auto-allowed run completes, approval-required run suspends, survives four Api restarts, and completes on approve (a second decide gets `409`, the decision is audited with the deciding `ProfileId`). The mid-planning `kill -9` step (AC-9) first failed: the run sat at `Planning` after restart because Hangfire.PostgreSql re-fetches a dead worker's job only after its 30 minute default `InvisibilityTimeout`. Fixed in `src/WorkPilot.Api/Program.cs` with a sliding 1 minute timeout; the stuck run then completed within 3s of restart. `dotnet test` 146/146 (Domain 47, Web 68, Api 31), `dotnet format --verify-no-changes` clean.
 
-### 7. AI provider abstraction · needs a decision
+### 7. AI provider abstraction · planned
 `IAiProvider`-style interface so no domain logic hardcodes a single vendor. Must support at least two swappable providers per the spec (e.g. OpenAI-compatible and DeepSeek-compatible), routed through the AI Gateway pattern appropriate to the chosen stack.
 **Done when:** the same planning call can be swapped between two configured providers via configuration only, no code change.
-- [ ] Design it (spec): `/architect AI provider abstraction`
+- [x] Design it (spec): `/architect AI provider abstraction` → [0006](../specs/0006-ai-provider-abstraction/index.md)
+- [ ] Build it: `/develop AI provider abstraction`
+  - [ ] Config selected `IChatClient` (OpenAI compatible and Fake kinds) replacing the hardcoded fake (AC-1, AC-2, AC-5)
+  - [ ] Startup validation and the provider log line (AC-3, AC-4, AC-5)
+  - [ ] Bounded calls; a provider failure fails the run (AC-6)
+  - [ ] Keys via user secrets or env vars; prove the swap live against two OpenAI compatible endpoints (AC-1, AC-2, AC-4)
+- [ ] Verify it: `/check verify AI provider abstraction`
+- [ ] Test it: `/test AI provider abstraction`
 
 ### 8. Approval engine & Approval center · needs a decision · GA
 Enforces the three tier policy: auto allowed (read/search/analyze/classify/dedupe/generate/prepare/monitor/detect/suggest), approval required (send email, submit application, withdraw application, connect external account), explicit confirmation (delete data, security/permission changes, destructive ops). The Approval center screen (`/approvals`) shows pending actions with enough evidence to decide (resume/cover letter versions, risk, target) and Approve/Reject.

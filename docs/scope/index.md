@@ -55,6 +55,8 @@ _These are recommendations to keep the build orderly, not requirements. Skip any
 - **Multi language / i18n**: out of scope for a single user MVP
 - **Mobile layout**: desktop first per spec; responsive polish deferred
 - **Multi user / team accounts**: product is single user for now
+- **ReAct style Planner & cross run memory**: revisit once a real domain agent's goals show the plan then execute, cold start model is limiting (from spec 0005 follow up)
+- **Approval expiry**: pending approvals never expire today; revisit once real usage shows them piling up (from spec 0005 follow up)
 
 ## Epics
 
