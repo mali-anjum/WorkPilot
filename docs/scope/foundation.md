@@ -140,7 +140,7 @@ One pre-existing, unrelated test failure noted, not caused by this build: `WorkP
 
 `/test` (2026-09-22): 15 new tests, all passing. `tests/WorkPilot.Api.Tests/IdentityProfileEndpointTests.cs` (2 tests, integration, against the real Postgres): `POST /internal/identity/profile` creates a `Profile` row on a first ever sign in (name derived from the email's local part) and returns the same `ProfileId` idempotently on a second call for the same `AuthUserId`, never creating a second row (spec 0004, Value sourcing: `profileId`). `tests/WorkPilot.Web.Tests/AuthEndpointsTests.cs` (13 tests, unit, via reflection since the helpers are private): `SafeLocalRedirectTarget` (open redirect prevention, AC-1 and the API surface's `Url.IsLocalUrl`/no `//`-prefix rule) and `Html` (XSS-safe encoding of untrusted form input echoed back into the sign in/reset pages). Not covered by an automated test, deferred to `/check verify`'s live steps: the sign in/sign out/reset flows themselves (need a live GoTrue, a live session cookie, and the Data Protection key ring; see `verify.md`), and AC-3/AC-7/AC-8, which are runtime/config properties rather than something a unit or integration test can pin down. `dotnet test` (full suite) and `dotnet format --verify-no-changes` both clean.
 
-### 6. Agent orchestrator core · GA
+### 6. Agent orchestrator core · GA · done
 The shared machinery every domain agent runs on: Planner, Policy Engine, Tool Registry, Workflow Engine, Approval Engine, Memory, Execution Engine, Verification Engine. Tools declare name, schema, required permissions, risk level, approval requirement, timeout, retry policy, audit policy. Workflows persist step by step, never rely on an in-memory process surviving. The LLM never mutates important state directly, only through tools; it never receives passwords, OAuth tokens, refresh tokens, client secrets, or session cookies.
 **Done when:** a trivial end to end tool call (e.g. "list my profile") runs through Planner -> Policy Engine -> Tool Registry -> Execution -> Verification -> Audit, is durably persisted as an AgentRun/AgentSteps/ToolCalls, and survives a process restart mid run.
 - [x] Design it (spec): `/architect agent orchestrator core` → [0005](../specs/0005-agent-orchestrator-core/index.md)
@@ -150,10 +150,12 @@ The shared machinery every domain agent runs on: Planner, Policy Engine, Tool Re
   - [x] Execution Engine (`AdvanceRun` job) + Verification Engine + Audit wiring (AC-3, AC-5, AC-8, AC-9)
   - [x] Trigger/status/decide endpoints (`/internal/agent/runs`, `/internal/agent/approvals/{id}/decide`) + Approval Engine suspend/resume (AC-4, AC-10)
   - [x] Prove the auto-allowed and approval-required threads live; AC-9's crash scenarios and AC-10's true concurrent case are code-level guarded but not yet exercised by an actual kill/race, left for `/check verify` (AC-1, AC-3, AC-4, AC-5, AC-6)
-- [ ] Verify it: `/check verify agent orchestrator core`
-- [ ] Test it: `/test agent orchestrator core`
-- [ ] Review it (fresh model): `/check review agent orchestrator core`
-- [ ] Document it: `/document agent orchestrator core`
+- [x] Verify it: `/check verify agent orchestrator core`
+- [x] Test it: `/test agent orchestrator core`
+- [x] Review it (fresh model): `/check review agent orchestrator core` → [review](../reviews/2026-09-24-feat-agent-orchestrator-core.md)
+- [x] Document it: `/document agent orchestrator core`
+
+`/test` (2026-09-24): 12 tests, all passing against the real Postgres. `tests/WorkPilot.Api.Tests/AdvanceRunJobTests.cs` (8 tests, integration, drives `AdvanceRunJob` directly with a scripted `ITool`): retry exhaustion fails the step and the run, and a later planned step never runs (AC-8); a non-idempotent `Running` step is failed on re-entry and an idempotent one re-runs safely (AC-9); every `ToolCall` writes an `AuditLog` row whose jsonb `Payload` is the tool's output on success, `null` with no output, and `{"error": "..."}` on failure, even for error text with quotes, backslashes, and unicode (AC-5; these failure cases fail against the pre-fix code, which wrote raw error text into the jsonb column). `tests/WorkPilot.Api.Tests/ChatClientPlannerTests.cs` (4 tests, unit, scripted `IChatClient`): one retry on an unparseable or empty plan, then `PlanParseException` (AC-7). Follow ups after `/check review` (same day): `PlanRunJobTests.cs` (3 tests) covers the policy check (AC-2); the decide endpoint now audits the deciding profile (AC-5); and approve leaves the step at `AwaitingApproval` so `AdvanceRunJob` moves it to `Running` itself, which lets a non idempotent approved tool run once instead of failing (AC-4, AC-9). Known gap, deferred to the API error handling decision: a `DbUpdateConcurrencyException` from `agent_runs.xmin` isn't caught yet.
 
 ### 7. AI provider abstraction · needs a decision
 `IAiProvider`-style interface so no domain logic hardcodes a single vendor. Must support at least two swappable providers per the spec (e.g. OpenAI-compatible and DeepSeek-compatible), routed through the AI Gateway pattern appropriate to the chosen stack.
