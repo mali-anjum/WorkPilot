@@ -1,7 +1,7 @@
 # 0008. Job source ingestion and normalization
 
 **Date**: 2026-09-24
-**Status**: In Progress
+**Status**: Accepted
 
 ## Summary
 
@@ -110,6 +110,8 @@ Tracer Bullet: one thin thread (trigger → Hangfire job → Greenhouse → norm
 6. Api: `Endpoints/JobsEndpoints.cs` with the trigger and read endpoints, one `MapJobEndpoints()` line in `Program.cs`, satisfies **AC-1**, **AC-7**
 7. Prove it live against the real Greenhouse board and the real Postgres, satisfies **AC-1** to **AC-7**
 
+`/develop` (2026-09-24): all 7 tasks built. Domain rules in `src/WorkPilot.Domain/Modules/Jobs/` (`Ingestion.cs`: `RawJobPosting`, `NormalizedJob`, `JobSearchQuery`, `JobNormalizer`; `Entities.cs`: `Job.Create`/`Job.Refresh`, `JobSnapshot.Capture`); use case and ports in `src/WorkPilot.Application/Modules/Jobs/`; `GreenhouseJobSource`, `JobIngestionRepository` and `AddJobIngestionInfrastructure` in `src/WorkPilot.Infrastructure/Modules/Jobs/`; `IngestJobsJob` plus the `AddJobIngestion` entry point in `src/WorkPilot.Workers/Jobs/`; endpoints in `src/WorkPilot.Api/Endpoints/JobsEndpoints.cs` (two lines in `Program.cs`). Migration `AddJobIngestion` backfills `job_snapshots.JobSourceId`/`ExternalId` from their job before adding the foreign key. The Greenhouse HttpClient replaces the ServiceDefaults resilience pipeline with its own (60 s per attempt), since a large board takes about 10 s. Live proof and tests: see [verify.md](verify.md).
+
 ## Consequences
 
 **Positive**:
@@ -122,7 +124,8 @@ Tracer Bullet: one thin thread (trigger → Hangfire job → Greenhouse → norm
 - Jobs that vanish from a board stay as they are until a stale job rule exists.
 
 **Neutral**:
-- `job_snapshots` gains two required columns; existing environments have no snapshot rows yet, so defaults never matter in practice.
+- `job_snapshots` gains two required columns; the migration backfills them from each snapshot's job, so any existing rows stay valid.
+- The Greenhouse client uses `RemoveAllResilienceHandlers`, still marked experimental (`EXTEXP0001`, suppressed locally with a comment).
 
 ## Follow-up
 
@@ -131,4 +134,6 @@ Tracer Bullet: one thin thread (trigger → Hangfire job → Greenhouse → norm
 - [ ] A second source (Lever, or a cross company API) to prove the seam, ideally together with feature 10.
 - [ ] Salary extraction: Greenhouse's list endpoint has no structured pay; parse ranges from text or use the `pay_input_ranges` field of the per job endpoint.
 - [ ] Error handling: `/internal/jobs/ingestions` follows the existing `Results.BadRequest` style; revisit when the project wide error pattern is decided.
-- [ ] `AGENTS.md` could gain a line: new job sources implement `IJobSource` in `Infrastructure/Modules/Jobs/Sources/` and register in `AddJobIngestion()`.
+- [ ] Two simultaneous first triggers for the same new board can race on the `job_sources (Type, Name)` unique index; the loser gets an unhandled `DbUpdateException` (500). Harmless (retrying returns the row) but belongs to the project wide error handling decision.
+- [ ] Test hygiene: the trigger integration test enqueues Hangfire jobs into the test database's queue (the worker is off in tests); they no-op later because their source row is deleted, but a Hangfire-free `IBackgroundJobClient` in the test host would be cleaner.
+- [ ] `AGENTS.md` could gain a line: new job sources implement `IJobSource` in `Infrastructure/Modules/Jobs/Sources/` and register in `AddJobIngestionInfrastructure()`; and the `dotnet ef` note that the tool isn't installed by default (`dotnet tool install dotnet-ef --version 10.0.12`).
