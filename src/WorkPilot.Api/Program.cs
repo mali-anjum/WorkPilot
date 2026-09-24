@@ -1,6 +1,7 @@
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 using WorkPilot.AI.Agent;
 using WorkPilot.AI.Providers;
 using WorkPilot.Application.Modules.Agent;
@@ -49,9 +50,10 @@ builder.Services.AddScoped<IProfileProvisioningService, ProfileProvisioningServi
 
 // Agent orchestrator core (docs/specs/0005-agent-orchestrator-core.md): Planner ->
 // Policy Engine -> Tool Registry -> Execution Engine -> Verification Engine ->
-// Approval Engine -> Audit. The Planner's IChatClient is whichever provider
-// AI:ActiveProvider names, validated at startup (docs/specs/0006-ai-provider-abstraction).
-builder.Services.AddWorkPilotChatClient(builder.Configuration);
+// Approval Engine -> Audit. Each AI purpose (the Planner, for now) gets the
+// provider and model Ai:Purposes maps it to, validated at startup
+// (docs/specs/0006-ai-provider-abstraction).
+builder.Services.AddWorkPilotAi(builder.Configuration);
 builder.Services.AddScoped<IPlanner, ChatClientPlanner>();
 builder.Services.AddScoped<IPolicyEngine, PolicyEngine>();
 builder.Services.AddScoped<IVerificationEngine, VerificationEngine>();
@@ -139,6 +141,27 @@ app.MapGet("/health/db", async (WorkPilotDbContext db) =>
 {
     var count = await db.Profiles.CountAsync();
     return Results.Ok(new { status = "ok", profiles = count });
+});
+
+// On demand AI provider check (docs/specs/0006-ai-provider-abstraction, AC-8):
+// one tiny prompt through the Default purpose. Deliberately NOT a registered
+// health check, so /health and /alive never spend tokens or go unhealthy
+// because a provider is down. Internal only, same network boundary as
+// /internal/* below.
+app.MapGet("/health/ai", async (
+    [FromKeyedServices(AiPurposes.Default)] IChatClient client,
+    [FromKeyedServices(AiPurposes.Default)] ResolvedAiPurpose target,
+    CancellationToken cancellationToken) =>
+{
+    var result = await AiHealthProbe.RunAsync(client, target, cancellationToken);
+    var body = new AiHealthResponse(
+        result.Healthy ? "ok" : "error",
+        result.Target.Purpose,
+        result.Target.Provider,
+        result.Target.Model,
+        result.LatencyMs,
+        result.Error);
+    return Results.Json(body, statusCode: result.Healthy ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable);
 });
 
 // Internal only: the Api project is never externally exposed (see AppHost.cs,
@@ -293,6 +316,8 @@ internal sealed record TriggerAgentRunRequest(string Goal, Guid ProfileId);
 
 /// <summary>Response body for <c>POST /internal/agent/runs</c>.</summary>
 internal sealed record TriggerAgentRunResponse(Guid AgentRunId, string Status);
+
+internal sealed record AiHealthResponse(string Status, string Purpose, string Provider, string? Model, long LatencyMs, string? Error);
 
 /// <summary>One step as reported by <c>GET /internal/agent/runs/{id}</c>.</summary>
 internal sealed record AgentRunStepView(int Ordinal, string ToolName, string Status, bool? Success);

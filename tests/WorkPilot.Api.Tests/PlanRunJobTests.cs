@@ -1,9 +1,12 @@
+using System.Text.Json;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using WorkPilot.Application.Modules.Agent;
 using WorkPilot.Domain.Modules.Agent;
+using WorkPilot.Domain.Modules.Audit;
 using WorkPilot.Domain.Modules.Profile;
+using WorkPilot.Infrastructure.Modules.Agent;
 using WorkPilot.Infrastructure.Persistence;
 using WorkPilot.Workers.Agent;
 
@@ -61,6 +64,66 @@ public class PlanRunJobTests(SharedApiFactory factory)
         Assert.Equal(2, stepCount);
     }
 
+    [Fact]
+    public async Task RunAsync_WhenTheProviderFails_FailsTheRunAndAuditsPlanningFailed()
+    {
+        // covers spec 0006 AC-6: a provider outage ends the run, never strands it at Planning.
+        var failure = new AiProviderException("Planner", "deepseek", "deepseek-chat", "AI provider 'deepseek' (model deepseek-chat) failed for purpose Planner: Status 503");
+
+        var (status, audits) = await PlanWithFailureAsync(new ThrowingPlanner(failure));
+
+        Assert.Equal(AgentRunStatus.Failed, status);
+        var audit = Assert.Single(audits);
+        Assert.Equal("Agent", audit.Actor);
+        Assert.Equal("AgentRun", audit.TargetType);
+        using var payload = JsonDocument.Parse(audit.Payload!);
+        Assert.Equal("provider_error", payload.RootElement.GetProperty("reason").GetString());
+        Assert.Equal("Planner", payload.RootElement.GetProperty("purpose").GetString());
+        Assert.Equal("deepseek", payload.RootElement.GetProperty("provider").GetString());
+        Assert.Equal("deepseek-chat", payload.RootElement.GetProperty("model").GetString());
+        Assert.Contains("Status 503", payload.RootElement.GetProperty("error").GetString());
+        Assert.DoesNotContain(SecretGoal, audit.Payload); // no prompt text
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenThePlanIsUnparseable_FailsTheRunAndAuditsPlanningFailed()
+    {
+        // covers spec 0006 AC-6: the parse failure path (spec 0005 AC-7) is audited too.
+        var failure = new PlanParseException("Planner produced no valid plan after one retry.") { Purpose = "Planner", Provider = "gemini", Model = "gemini-2.5-flash" };
+
+        var (status, audits) = await PlanWithFailureAsync(new ThrowingPlanner(failure));
+
+        Assert.Equal(AgentRunStatus.Failed, status);
+        using var payload = JsonDocument.Parse(Assert.Single(audits).Payload!);
+        Assert.Equal("unparseable_plan", payload.RootElement.GetProperty("reason").GetString());
+        Assert.Equal("gemini", payload.RootElement.GetProperty("provider").GetString());
+    }
+
+    private const string SecretGoal = "GOAL-TEXT-MUST-NOT-BE-AUDITED";
+
+    private async Task<(AgentRunStatus RunStatus, List<AuditLog> Audits)> PlanWithFailureAsync(IPlanner planner)
+    {
+        await using var db = CreateDbContext();
+        var (runId, profileId) = await SeedPlanningRunAsync(db, SecretGoal);
+
+        try
+        {
+            var jobs = factory.Services.CreateScope().ServiceProvider.GetRequiredService<IBackgroundJobClient>();
+            var job = new PlanRunJob(db, planner, new ToolRegistry(Tools), new PolicyEngine(), jobs, new AuditService(db));
+
+            await job.RunAsync(runId);
+
+            await using var verifyDb = CreateDbContext();
+            var run = await verifyDb.AgentRuns.SingleAsync(r => r.Id == runId);
+            var audits = await verifyDb.AuditLogs.Where(a => a.TargetId == runId && a.Action == "PlanningFailed").ToListAsync();
+            return (run.Status, audits);
+        }
+        finally
+        {
+            await CleanupAsync(profileId);
+        }
+    }
+
     private async Task<(AgentRunStatus RunStatus, int StepCount)> PlanAsync(AgentPlan plan)
     {
         await using var db = CreateDbContext();
@@ -69,7 +132,7 @@ public class PlanRunJobTests(SharedApiFactory factory)
         try
         {
             var jobs = factory.Services.CreateScope().ServiceProvider.GetRequiredService<IBackgroundJobClient>();
-            var job = new PlanRunJob(db, new FixedPlanner(plan), new ToolRegistry(Tools), new PolicyEngine(), jobs);
+            var job = new PlanRunJob(db, new FixedPlanner(plan), new ToolRegistry(Tools), new PolicyEngine(), jobs, new AuditService(db));
 
             await job.RunAsync(runId);
 
@@ -88,7 +151,7 @@ public class PlanRunJobTests(SharedApiFactory factory)
     private WorkPilotDbContext CreateDbContext() =>
         factory.Services.CreateScope().ServiceProvider.GetRequiredService<WorkPilotDbContext>();
 
-    private static async Task<(Guid RunId, Guid ProfileId)> SeedPlanningRunAsync(WorkPilotDbContext db)
+    private static async Task<(Guid RunId, Guid ProfileId)> SeedPlanningRunAsync(WorkPilotDbContext db, string goal = "test")
     {
         var profile = new Profile { AuthUserId = Guid.NewGuid(), Name = "Test Founder" };
         db.Profiles.Add(profile);
@@ -96,7 +159,7 @@ public class PlanRunJobTests(SharedApiFactory factory)
         var workflow = new WorkflowInstance { DefinitionName = "AgentRun", Status = AgentRunStatus.Planning.ToString() };
         db.WorkflowInstances.Add(workflow);
 
-        var run = new AgentRun { WorkflowInstanceId = workflow.Id, ProfileId = profile.Id, Goal = "test" };
+        var run = new AgentRun { WorkflowInstanceId = workflow.Id, ProfileId = profile.Id, Goal = goal };
         db.AgentRuns.Add(run);
 
         await db.SaveChangesAsync();
@@ -109,6 +172,7 @@ public class PlanRunJobTests(SharedApiFactory factory)
         var runIds = await db.AgentRuns.Where(r => r.ProfileId == profileId).Select(r => r.Id).ToListAsync();
         var workflowIds = await db.AgentRuns.Where(r => r.ProfileId == profileId).Select(r => r.WorkflowInstanceId).ToListAsync();
 
+        await db.AuditLogs.Where(a => runIds.Contains(a.TargetId)).ExecuteDeleteAsync();
         await db.AgentSteps.Where(s => runIds.Contains(s.AgentRunId)).ExecuteDeleteAsync();
         await db.AgentRuns.Where(r => r.ProfileId == profileId).ExecuteDeleteAsync();
         await db.WorkflowInstances.Where(w => workflowIds.Contains(w.Id)).ExecuteDeleteAsync();
@@ -121,6 +185,12 @@ public class PlanRunJobTests(SharedApiFactory factory)
     {
         public Task<AgentPlan> PlanAsync(string goal, IReadOnlyList<ToolDescriptor> availableTools, CancellationToken cancellationToken) =>
             Task.FromResult(plan);
+    }
+
+    private sealed class ThrowingPlanner(Exception failure) : IPlanner
+    {
+        public Task<AgentPlan> PlanAsync(string goal, IReadOnlyList<ToolDescriptor> availableTools, CancellationToken cancellationToken) =>
+            Task.FromException<AgentPlan>(failure);
     }
 
     // A registered tool with one required argument; never executed here,

@@ -14,6 +14,8 @@ namespace WorkPilot.AI.Agent;
 /// </summary>
 public sealed partial class FakeChatClient : IChatClient
 {
+    private static readonly ChatClientMetadata Metadata = new("fake", defaultModelId: "fake");
+
     public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
     {
         var prompt = string.Concat(messages.Select(m => m.Text));
@@ -33,7 +35,11 @@ public sealed partial class FakeChatClient : IChatClient
         }
     }
 
-    public object? GetService(Type serviceType, object? serviceKey = null) => null;
+    public object? GetService(Type serviceType, object? serviceKey = null) =>
+        serviceKey is not null ? null
+        : serviceType == typeof(ChatClientMetadata) ? Metadata
+        : serviceType.IsInstanceOfType(this) ? this
+        : null;
 
     public void Dispose()
     {

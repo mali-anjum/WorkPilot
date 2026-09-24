@@ -163,13 +163,15 @@ The shared machinery every domain agent runs on: Planner, Policy Engine, Tool Re
 `IAiProvider`-style interface so no domain logic hardcodes a single vendor. Must support at least two swappable providers per the spec (e.g. OpenAI-compatible and DeepSeek-compatible), routed through the AI Gateway pattern appropriate to the chosen stack.
 **Done when:** the same planning call can be swapped between two configured providers via configuration only, no code change.
 - [x] Design it (spec): `/architect AI provider abstraction` → [0006](../specs/0006-ai-provider-abstraction/index.md)
-- [ ] Build it: `/develop AI provider abstraction`
-  - [ ] Per purpose keyed clients through one OpenAI compatible adapter (OpenAI, Gemini, DeepSeek, Ollama) plus the explicit Fake provider, proven against a stub server (AC-1, AC-2, AC-3)
-  - [ ] Fail fast config validation and the Fake startup warning (AC-3, AC-4)
-  - [ ] Retries, timeouts, provider error translation, `PlanningFailed` audit, fenced JSON tolerance (AC-5, AC-6, AC-9)
-  - [ ] Telemetry with the sensitive data flag, and the `/health/ai` probe (AC-7, AC-8)
+- [x] Build it: `/develop AI provider abstraction`
+  - [x] Per purpose keyed clients through one OpenAI compatible adapter (OpenAI, Gemini, DeepSeek, Ollama) plus the explicit Fake provider, proven against a stub server (AC-1, AC-2, AC-3)
+  - [x] Fail fast config validation and the Fake startup warning (AC-3, AC-4)
+  - [x] Retries, timeouts, provider error translation, `PlanningFailed` audit, fenced JSON tolerance (AC-5, AC-6, AC-9)
+  - [x] Telemetry with the sensitive data flag, and the `/health/ai` probe (AC-7, AC-8)
 - [ ] Verify it: `/check verify AI provider abstraction`
 - [ ] Test it: `/test AI provider abstraction`
+
+Code in `src/WorkPilot.AI/Providers/`, `src/WorkPilot.AI/Agent/ChatClientPlanner.cs`, `src/WorkPilot.Workers/Agent/PlanRunJob.cs`, `/health/ai` in `src/WorkPilot.Api/Program.cs`. `/develop` (2026-09-24): builds on the superseded single `ActiveProvider` draft (`ca32dfc`), reworked to spec 0006. `dotnet test` 186/186 (Domain 47, Web 68, Api 71, 40 of them new for this feature against an in process OpenAI compatible stub server), `dotnet format --verify-no-changes` clean. Build plan task 7 (the live proof across OpenAI, Gemini, DeepSeek, and Ollama) is left for `/check verify`.
 
 ### 8. Approval engine & Approval center · needs a decision · GA
 Enforces the three tier policy: auto allowed (read/search/analyze/classify/dedupe/generate/prepare/monitor/detect/suggest), approval required (send email, submit application, withdraw application, connect external account), explicit confirmation (delete data, security/permission changes, destructive ops). The Approval center screen (`/approvals`) shows pending actions with enough evidence to decide (resume/cover letter versions, risk, target) and Approve/Reject.

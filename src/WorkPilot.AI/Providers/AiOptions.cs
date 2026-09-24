@@ -1,72 +1,57 @@
 namespace WorkPilot.AI.Providers;
 
 /// <summary>
-/// The <c>AI</c> configuration section: a named list of providers and the
-/// one that is active (docs/specs/0006-ai-provider-abstraction). Switching
-/// providers is a config change plus a restart, never a code change.
+/// The <c>Ai</c> configuration section (docs/specs/0006-ai-provider-abstraction):
+/// named OpenAI compatible providers, and a map from each purpose to a
+/// provider and model. Switching a model is a config change plus a restart,
+/// never a code change.
 /// </summary>
 public sealed class AiOptions
 {
     /// <summary>The configuration section this binds to.</summary>
-    public const string SectionName = "AI";
-
-    /// <summary>Name of the entry under <see cref="Providers"/> that answers every <c>IChatClient</c> call.</summary>
-    public string? ActiveProvider { get; set; }
-
-    /// <summary>Every declared provider, keyed by name (e.g. <c>OpenAI</c>, <c>DeepSeek</c>, <c>Fake</c>).</summary>
-    public Dictionary<string, AiProviderOptions> Providers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public const string SectionName = "Ai";
 
     /// <summary>
-    /// Looks up the active provider's entry, ignoring case like the rest of
-    /// .NET configuration does. Null when <see cref="ActiveProvider"/> is blank or names no entry.
+    /// The reserved provider name for the deterministic, no network
+    /// <see cref="Agent.FakeChatClient"/>. Never declared under <see cref="Providers"/>.
     /// </summary>
-    public KeyValuePair<string, AiProviderOptions>? FindActive()
-    {
-        if (string.IsNullOrWhiteSpace(ActiveProvider))
-        {
-            return null;
-        }
+    public const string FakeProvider = "Fake";
 
-        foreach (var entry in Providers)
-        {
-            if (string.Equals(entry.Key, ActiveProvider, StringComparison.OrdinalIgnoreCase))
-            {
-                return entry;
-            }
-        }
+    /// <summary>When true, prompt and response text is recorded in telemetry and logs (AC-7). Off by default: prompts carry personal data.</summary>
+    public bool LogSensitiveData { get; set; }
 
-        return null;
-    }
+    /// <summary>Every declared provider, keyed by name (e.g. <c>openai</c>, <c>gemini</c>, <c>deepseek</c>, <c>ollama</c>).</summary>
+    public Dictionary<string, AiProviderOptions> Providers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Which provider and model answers each purpose, keyed by a name from <see cref="AiPurposes.All"/>.</summary>
+    public Dictionary<string, AiPurposeOptions> Purposes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
-/// <summary>One named provider under <c>AI:Providers:&lt;Name&gt;</c>.</summary>
+/// <summary>One OpenAI compatible provider under <c>Ai:Providers:&lt;name&gt;</c>.</summary>
 public sealed class AiProviderOptions
 {
     /// <summary>Default for <see cref="TimeoutSeconds"/>.</summary>
     public const int DefaultTimeoutSeconds = 60;
 
-    /// <summary>Which adapter builds the client: <see cref="AiProviderKinds.OpenAICompatible"/> or <see cref="AiProviderKinds.Fake"/>.</summary>
-    public string? Kind { get; set; }
-
-    /// <summary>Absolute base URL of an OpenAI compatible API, e.g. <c>https://api.deepseek.com/v1</c>.</summary>
+    /// <summary>Absolute base URL of the provider's OpenAI compatible API, e.g. <c>https://api.deepseek.com/v1</c>.</summary>
     public string? Endpoint { get; set; }
-
-    /// <summary>Model id sent with every call, e.g. <c>deepseek-chat</c>.</summary>
-    public string? Model { get; set; }
 
     /// <summary>The provider's API key. Only ever from user secrets or env vars, never a tracked file; never logged.</summary>
     public string? ApiKey { get; set; }
 
-    /// <summary>Network timeout per HTTP call, 1 to 600 seconds.</summary>
+    /// <summary>False for a provider that needs no key (Ollama). Defaults to true.</summary>
+    public bool RequiresApiKey { get; set; } = true;
+
+    /// <summary>Cutoff for each HTTP attempt, 1 to 600 seconds (AC-5).</summary>
     public int TimeoutSeconds { get; set; } = DefaultTimeoutSeconds;
 }
 
-/// <summary>The provider kinds <see cref="AiChatClientFactory"/> knows how to build.</summary>
-public static class AiProviderKinds
+/// <summary>One purpose's mapping under <c>Ai:Purposes:&lt;purpose&gt;</c>.</summary>
+public sealed class AiPurposeOptions
 {
-    /// <summary>Any endpoint speaking OpenAI's Chat Completions API (OpenAI, DeepSeek, OpenRouter, a local server).</summary>
-    public const string OpenAICompatible = "OpenAICompatible";
+    /// <summary>A key of <see cref="AiOptions.Providers"/>, or <see cref="AiOptions.FakeProvider"/>.</summary>
+    public string? Provider { get; set; }
 
-    /// <summary>The deterministic, no network <see cref="Agent.FakeChatClient"/>, for keyless development and tests.</summary>
-    public const string Fake = "Fake";
+    /// <summary>The model id to ask for, e.g. <c>deepseek-chat</c>. Not used by the Fake provider.</summary>
+    public string? Model { get; set; }
 }

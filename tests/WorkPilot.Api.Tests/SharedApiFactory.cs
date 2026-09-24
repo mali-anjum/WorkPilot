@@ -66,6 +66,13 @@ public sealed class SharedApiFactory : WebApplicationFactory<Program>
         // threads); the dashboard and IBackgroundJobClient still work
         // without it, and it only drags out teardown.
         Environment.SetEnvironmentVariable("Hangfire__DisableServer", "true");
+        // Pin every AI purpose to the no network Fake provider explicitly,
+        // never relying on the host environment name (spec 0006): a
+        // WebApplicationFactory host does not run as Development, and a
+        // developer's user secrets or env vars must not make tests call a
+        // paid provider.
+        Environment.SetEnvironmentVariable("Ai__Purposes__Default__Provider", "Fake");
+        Environment.SetEnvironmentVariable("Ai__Purposes__Planner__Provider", "Fake");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)

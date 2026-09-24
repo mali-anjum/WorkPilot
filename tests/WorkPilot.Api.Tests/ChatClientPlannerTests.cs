@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using WorkPilot.AI.Agent;
+using WorkPilot.AI.Providers;
 using WorkPilot.Application.Modules.Agent;
 
 namespace WorkPilot.Api.Tests;
@@ -13,11 +14,13 @@ public class ChatClientPlannerTests
 {
     private static readonly ToolDescriptor[] Tools = [new("list_my_profile", "Lists the profile.", [])];
 
+    private static readonly ResolvedAiPurpose Target = new(AiPurposes.Planner, "stub", "stub-model");
+
     [Fact]
     public async Task PlanAsync_WithAValidResponseFirstTry_ReturnsThePlanWithoutRetrying()
     {
         var chat = new ScriptedChatClient("""{"steps":[{"tool":"list_my_profile","arguments":{}}]}""");
-        var planner = new ChatClientPlanner(chat);
+        var planner = new ChatClientPlanner(chat, Target);
 
         var plan = await planner.PlanAsync("list my profile", Tools, CancellationToken.None);
 
@@ -30,7 +33,7 @@ public class ChatClientPlannerTests
     public async Task PlanAsync_WithInvalidJsonThenAValidResponse_RetriesOnceAndSucceeds()
     {
         var chat = new ScriptedChatClient("not json", """{"steps":[{"tool":"list_my_profile","arguments":{}}]}""");
-        var planner = new ChatClientPlanner(chat);
+        var planner = new ChatClientPlanner(chat, Target);
 
         var plan = await planner.PlanAsync("list my profile", Tools, CancellationToken.None);
 
@@ -42,7 +45,7 @@ public class ChatClientPlannerTests
     public async Task PlanAsync_WithInvalidJsonTwice_ThrowsPlanParseExceptionAfterOneRetry()
     {
         var chat = new ScriptedChatClient("not json", "still not json");
-        var planner = new ChatClientPlanner(chat);
+        var planner = new ChatClientPlanner(chat, Target);
 
         await Assert.ThrowsAsync<PlanParseException>(() => planner.PlanAsync("list my profile", Tools, CancellationToken.None));
         Assert.Equal(2, chat.CallCount);
@@ -53,9 +56,40 @@ public class ChatClientPlannerTests
     {
         // An empty plan is a parse failure under AC-7, not a valid zero-step run (AC-2).
         var chat = new ScriptedChatClient("""{"steps":[]}""", """{"steps":[]}""");
-        var planner = new ChatClientPlanner(chat);
+        var planner = new ChatClientPlanner(chat, Target);
 
         await Assert.ThrowsAsync<PlanParseException>(() => planner.PlanAsync("list my profile", Tools, CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("```json\n{\"steps\":[{\"tool\":\"list_my_profile\",\"arguments\":{}}]}\n```")]
+    [InlineData("```\n{\"steps\":[{\"tool\":\"list_my_profile\",\"arguments\":{}}]}\n```")]
+    [InlineData("  ```json\n{\"steps\":[{\"tool\":\"list_my_profile\",\"arguments\":{}}]}\n```  \n")]
+    public async Task PlanAsync_WithAPlanWrappedInACodeFence_ParsesItFirstTry(string reply)
+    {
+        // covers spec 0006 AC-9: real models fence JSON even in JSON mode.
+        var chat = new ScriptedChatClient(reply);
+        var planner = new ChatClientPlanner(chat, Target);
+
+        var plan = await planner.PlanAsync("list my profile", Tools, CancellationToken.None);
+
+        Assert.Equal("list_my_profile", Assert.Single(plan.Steps).Tool);
+        Assert.Equal(1, chat.CallCount);
+    }
+
+    [Fact]
+    public async Task PlanAsync_WhenItGivesUp_NamesThePurposeProviderAndModel_AndNotTheGoal()
+    {
+        // covers spec 0006 AC-6: the unparseable_plan audit needs these, and must not carry prompt text.
+        var chat = new ScriptedChatClient("not json");
+        var planner = new ChatClientPlanner(chat, Target);
+
+        var ex = await Assert.ThrowsAsync<PlanParseException>(() => planner.PlanAsync("SECRET-GOAL-TEXT", Tools, CancellationToken.None));
+
+        Assert.Equal(AiPurposes.Planner, ex.Purpose);
+        Assert.Equal("stub", ex.Provider);
+        Assert.Equal("stub-model", ex.Model);
+        Assert.DoesNotContain("SECRET-GOAL-TEXT", ex.Message);
     }
 
     // A minimal IChatClient stand in that replays a fixed script of raw

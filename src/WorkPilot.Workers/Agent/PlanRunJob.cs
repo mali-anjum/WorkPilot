@@ -13,9 +13,11 @@ namespace WorkPilot.Workers.Agent;
 /// request thread so a process restart mid-planning is safe (spec 0005,
 /// AC-1, AC-9). Not retried by Hangfire itself: the injected <see cref="IPlanner"/>
 /// already retries once internally (AC-7); a second Hangfire-level retry
-/// would only duplicate that.
+/// would only duplicate that. A provider failure (after the AI client's own
+/// retries) or an unparseable plan fails the run and is audited as
+/// <c>PlanningFailed</c> (spec 0006, AC-6), never left stuck at Planning.
 /// </summary>
-public sealed class PlanRunJob(WorkPilotDbContext db, IPlanner planner, IToolRegistry registry, IPolicyEngine policy, IBackgroundJobClient jobs)
+public sealed class PlanRunJob(WorkPilotDbContext db, IPlanner planner, IToolRegistry registry, IPolicyEngine policy, IBackgroundJobClient jobs, IAuditService audit)
 {
     [AutomaticRetry(Attempts = 0)]
     public async Task RunAsync(Guid agentRunId)
@@ -35,14 +37,14 @@ public sealed class PlanRunJob(WorkPilotDbContext db, IPlanner planner, IToolReg
         {
             plan = await planner.PlanAsync(run.Goal, descriptors, CancellationToken.None);
         }
-        catch (Exception ex) when (ex is PlanParseException or PlannerUnavailableException)
+        catch (AiProviderException ex)
         {
-            // A provider failure fails the run rather than stranding it at
-            // Planning; the chat client's logging middleware already logged
-            // the cause (spec 0006, AC-6).
-            run.TransitionTo(AgentRunStatus.Failed);
-            await WorkflowMirror.SyncAsync(db, run, CancellationToken.None);
-            await db.SaveChangesAsync();
+            await FailPlanningAsync(run, "provider_error", ex.Purpose, ex.Provider, ex.Model, ex.Message);
+            return;
+        }
+        catch (PlanParseException ex)
+        {
+            await FailPlanningAsync(run, "unparseable_plan", ex.Purpose, ex.Provider, ex.Model, ex.Message);
             return;
         }
 
@@ -73,5 +75,18 @@ public sealed class PlanRunJob(WorkPilotDbContext db, IPlanner planner, IToolReg
         await db.SaveChangesAsync();
 
         jobs.Enqueue<AdvanceRunJob>(j => j.RunAsync(run.Id));
+    }
+
+    private async Task FailPlanningAsync(AgentRun run, string reason, string? purpose, string? provider, string? model, string error)
+    {
+        run.TransitionTo(AgentRunStatus.Failed);
+        await WorkflowMirror.SyncAsync(db, run, CancellationToken.None);
+
+        // No key and no prompt text: the exception messages are built to
+        // carry neither (spec 0006, AC-6).
+        var payload = JsonSerializer.Serialize(new { reason, purpose, provider, model, error }, JsonSerializerOptions.Web);
+        audit.Record("Agent", "PlanningFailed", nameof(AgentRun), run.Id, payload);
+
+        await db.SaveChangesAsync();
     }
 }
