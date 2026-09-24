@@ -212,7 +212,7 @@ public static partial class JobNormalizer
     [GeneratedRegex(@"<br\s*/?>", RegexOptions.IgnoreCase)]
     private static partial Regex LineBreakTag();
 
-    [GeneratedRegex(@"</(p|div|li|ul|ol|h[1-6]|tr|table|section|article|blockquote)\s*>", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"</(p|div|ul|ol|h[1-6]|tr|table|section|article|blockquote)\s*>", RegexOptions.IgnoreCase)]
     private static partial Regex BlockClose();
 
     [GeneratedRegex(@"<[^>]+>")]

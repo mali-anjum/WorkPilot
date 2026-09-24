@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Http.Resilience;
 using WorkPilot.Application.Modules.Jobs;
 using WorkPilot.Infrastructure.Modules.Jobs.Sources;
 
