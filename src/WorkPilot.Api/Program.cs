@@ -70,7 +70,19 @@ builder.Services.AddHangfire(config => config
     .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
     .UseSimpleAssemblyNameTypeSerializer()
     .UseRecommendedSerializerSettings()
-    .UsePostgreSqlStorage(options => options.UseNpgsqlConnection(connectionString)));
+    .UsePostgreSqlStorage(
+        options => options.UseNpgsqlConnection(connectionString),
+        // A job fetched by a process that then dies stays invisible until
+        // InvisibilityTimeout passes (Hangfire.PostgreSql default: 30 min),
+        // so a run killed mid-planning/mid-step would sit stuck that long
+        // before resuming (spec 0005, AC-9). Sliding keeps extending the
+        // lease while a live worker runs the job, so a short timeout is safe
+        // for long jobs too, and a crashed worker's job is re-fetched fast.
+        new PostgreSqlStorageOptions
+        {
+            UseSlidingInvisibilityTimeout = true,
+            InvisibilityTimeout = TimeSpan.FromMinutes(1),
+        }));
 // The background worker server (polling threads, watchdog, heartbeat) has
 // nothing to do with serving requests and isn't needed by WebApplicationFactory
 // integration tests, whose host is torn down immediately after each test;
