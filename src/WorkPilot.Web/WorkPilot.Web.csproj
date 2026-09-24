@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WorkPilot.Web.Client\WorkPilot.Web.Client.csproj" />
+    <ProjectReference Include="..\WorkPilot.Contracts\WorkPilot.Contracts.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.12" />
   </ItemGroup>
 

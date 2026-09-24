@@ -1,6 +1,254 @@
 @page "/approvals"
+@using System.Globalization
+@using WorkPilot.Contracts.Approvals
+@using WorkPilot.Web.Features.Approvals
+@inject IApprovalCenterClient ApprovalCenter
+
+@* The Approval center (docs/specs/0007-approval-engine-center): every pending
+   agent action with the evidence to decide it, plus recent decisions.
+   Approve/Reject are plain antiforgery protected form posts to
+   /approvals/{id}/decide (ApprovalCenterEndpoints), which takes the deciding
+   profile from the session cookie, never from the form, and redirects back
+   here with ?outcome=... *@
 
 <PageTitle>Approvals</PageTitle>
 
 <PageHeader Title="Approvals" Description="Actions waiting on your decision before the agent proceeds." />
-<EmptyState Title="Nothing pending" Description="Actions that need your approval, like sending an email or submitting an application, show up here." Icon="✔️" />
+
+@if (OutcomeMessage is { } message)
+{
+    <p class="wp-approvals__outcome wp-approvals__outcome--@message.Kind" role="status">@message.Text</p>
+}
+
+@if (_loadFailed)
+{
+    <p class="wp-approvals__error" role="alert">The approvals couldn't be loaded right now. Refresh the page to try again.</p>
+}
+else if (_view is null)
+{
+    <p class="wp-approvals__loading">Loading approvals…</p>
+}
+else
+{
+    @if (_view.Pending.Count == 0)
+    {
+        <EmptyState Title="Nothing pending" Description="Actions that need your approval, like sending an email or submitting an application, show up here." Icon="✔️" />
+    }
+    else
+    {
+        <section class="wp-approvals__section" aria-labelledby="wp-approvals-pending">
+            <h2 id="wp-approvals-pending" class="wp-approvals__heading">Pending (@_view.Pending.Count)</h2>
+
+            @foreach (var approval in _view.Pending)
+            {
+                var titleId = $"wp-approval-{approval.ApprovalId}";
+                <article class="wp-approval" aria-labelledby="@titleId" data-approval-id="@approval.ApprovalId">
+                    <Card>
+                        <header class="wp-approval__header">
+                            <h3 id="@titleId" class="wp-approval__title">@approval.ToolName</h3>
+                            <Badge Status="@RiskStatus(approval.RiskTier)">@RiskLabel(approval.RiskTier)</Badge>
+                        </header>
+
+                        <p class="wp-approval__summary">
+                            @(approval.Evidence?.Summary ?? "This tool gave no extra evidence. Review its inputs below before deciding.")
+                        </p>
+
+                        <dl class="wp-approval__facts">
+                            <dt>Target</dt>
+                            <dd class="wp-approval__target">
+                                @if (approval.Evidence?.Target is { } target)
+                                {
+                                    <span>@target.Label</span>
+                                    <span class="wp-approval__muted"> (@target.Type@(target.Id is { } targetId ? $" {targetId}" : string.Empty))</span>
+                                }
+                                else
+                                {
+                                    <span class="wp-approval__muted">Not specified by the tool</span>
+                                }
+                            </dd>
+                            <dt>Goal</dt>
+                            <dd>@approval.Goal</dd>
+                            <dt>Tool</dt>
+                            <dd>
+                                <code>@approval.ToolName</code>
+                                @if (!string.IsNullOrWhiteSpace(approval.ToolDescription))
+                                {
+                                    <span class="wp-approval__muted"> · @approval.ToolDescription</span>
+                                }
+                            </dd>
+                            <dt>Step</dt>
+                            <dd>@(approval.StepOrdinal + 1) of run <code>@approval.AgentRunId</code></dd>
+                            <dt>Requested</dt>
+                            <dd>@FormatTime(approval.RequestedAt)</dd>
+                        </dl>
+
+                        <h4 class="wp-approval__subheading">Inputs</h4>
+                        @if (approval.Arguments.Count == 0)
+                        {
+                            <p class="wp-approval__muted wp-approval__inputs-empty">No inputs: the tool runs with nothing but your profile.</p>
+                        }
+                        else
+                        {
+                            <table class="wp-approval__inputs">
+                                <thead><tr><th scope="col">Name</th><th scope="col">Value</th></tr></thead>
+                                <tbody>
+                                    @foreach (var (name, value) in approval.Arguments)
+                                    {
+                                        <tr><th scope="row"><code>@name</code></th><td>@value</td></tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+
+                        @if (approval.Evidence is { Documents.Count: > 0 } evidence)
+                        {
+                            <h4 class="wp-approval__subheading">Documents</h4>
+                            <ul class="wp-approval__documents">
+                                @foreach (var document in evidence.Documents)
+                                {
+                                    <li>
+                                        <span>@DocumentKindLabel(document.Kind): @document.Name, version @document.VersionNumber</span>
+                                        <span class="wp-approval__muted"> (created @FormatTime(document.CreatedAt), id <code>@document.VersionId</code>)</span>
+                                    </li>
+                                }
+                            </ul>
+                        }
+
+                        <div class="wp-approval__actions">
+                            <form method="post" action="/approvals/@approval.ApprovalId/decide" class="wp-approval__form">
+                                <AntiforgeryToken />
+                                <input type="hidden" name="decision" value="Approve" />
+                                @if (approval.ConfirmationPhrase is { } phrase)
+                                {
+                                    var confirmId = $"wp-approval-confirm-{approval.ApprovalId}";
+                                    <label class="wp-approval__confirm" for="@confirmId">
+                                        This is a destructive action. Type <code>@phrase</code> to confirm.
+                                    </label>
+                                    <input id="@confirmId" class="wp-approval__confirm-input" name="confirmation" required autocomplete="off" spellcheck="false" />
+                                }
+                                <Button Type="submit" Variant="@(approval.ConfirmationPhrase is null ? ButtonVariant.Primary : ButtonVariant.Danger)">Approve</Button>
+                            </form>
+                            <form method="post" action="/approvals/@approval.ApprovalId/decide" class="wp-approval__form">
+                                <AntiforgeryToken />
+                                <input type="hidden" name="decision" value="Reject" />
+                                <Button Type="submit" Variant="ButtonVariant.Secondary">Reject</Button>
+                            </form>
+                        </div>
+                    </Card>
+                </article>
+            }
+        </section>
+    }
+
+    <section class="wp-approvals__section" aria-labelledby="wp-approvals-recent">
+        <h2 id="wp-approvals-recent" class="wp-approvals__heading">Recent decisions</h2>
+        @if (_view.RecentlyDecided.Count == 0)
+        {
+            <p class="wp-approval__muted wp-approvals__recent-empty">No decisions yet.</p>
+        }
+        else
+        {
+            <table class="wp-approvals__recent">
+                <thead>
+                    <tr><th scope="col">Decided</th><th scope="col">Tool</th><th scope="col">Goal</th><th scope="col">Risk</th><th scope="col">Decision</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var decided in _view.RecentlyDecided)
+                    {
+                        <tr data-approval-id="@decided.ApprovalId">
+                            <td>@(decided.DecidedAt is { } at ? FormatTime(at) : "")</td>
+                            <td><code>@decided.ToolName</code></td>
+                            <td>@decided.Goal</td>
+                            <td>@RiskLabel(decided.RiskTier)</td>
+                            <td>
+                                <Badge Status="@(decided.Status == "Approved" ? StatusKind.Success : StatusKind.Neutral)">@decided.Status</Badge>
+                                @if (decided.ExplicitlyConfirmed)
+                                {
+                                    <span class="wp-approval__muted"> (confirmed)</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </section>
+}
+
+@code {
+    private ApprovalCenterDto? _view;
+    private bool _loadFailed;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    /// <summary>The result of the last Approve/Reject, set by the decide endpoint's redirect.</summary>
+    [SupplyParameterFromQuery(Name = "outcome")]
+    public string? Outcome { get; set; }
+
+    private sealed record Message(string Kind, string Text);
+
+    private Message? OutcomeMessage => Outcome switch
+    {
+        "approved" => new("success", "Approved. The agent will carry on with this action."),
+        "rejected" => new("neutral", "Rejected. The action won't run and its run has stopped."),
+        "already-decided" => new("warning", "That approval was already decided, so nothing changed."),
+        "confirmation-required" => new("warning", "Not approved: type the exact confirmation phrase to approve a destructive action."),
+        "not-allowed" => new("danger", "You can't decide that approval."),
+        "not-found" => new("warning", "That approval no longer exists."),
+        "invalid" => new("danger", "That decision wasn't understood. Try again."),
+        _ => null,
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var profileId = await GetProfileIdAsync();
+        if (profileId is null)
+        {
+            _loadFailed = true;
+            return;
+        }
+
+        try
+        {
+            _view = await ApprovalCenter.GetAsync(profileId.Value, CancellationToken.None);
+        }
+        catch (HttpRequestException)
+        {
+            _loadFailed = true;
+        }
+    }
+
+    private async Task<Guid?> GetProfileIdAsync()
+    {
+        if (AuthenticationState is null)
+        {
+            return null;
+        }
+
+        var user = (await AuthenticationState).User;
+        return Guid.TryParse(user.FindFirst(PersistedAuthState.ProfileIdClaimType)?.Value, out var id) ? id : null;
+    }
+
+    private static string RiskLabel(string riskTier) => riskTier switch
+    {
+        "ApprovalRequired" => "Approval required",
+        "ExplicitConfirmation" => "Explicit confirmation",
+        "AutoAllowed" => "Auto allowed",
+        _ => riskTier,
+    };
+
+    private static StatusKind RiskStatus(string riskTier) =>
+        riskTier == "ExplicitConfirmation" ? StatusKind.Danger : StatusKind.Warning;
+
+    private static string DocumentKindLabel(string kind) => kind switch
+    {
+        "Resume" => "Resume",
+        "CoverLetter" => "Cover letter",
+        _ => kind,
+    };
+
+    // Shown in UTC, labeled as such: the product has no per user timezone setting yet.
+    private static string FormatTime(DateTimeOffset value) =>
+        value.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
+}

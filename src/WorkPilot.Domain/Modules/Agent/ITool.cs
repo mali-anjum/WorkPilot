@@ -1,3 +1,5 @@
+using WorkPilot.Domain.Modules.Approvals;
+
 namespace WorkPilot.Domain.Modules.Agent;
 
 /// <summary>The three tier policy from the product spec, baked into each tool's own declaration (spec 0005).</summary>
@@ -9,8 +11,22 @@ public enum ToolRiskTier
     /// <summary>Send email, submit/withdraw an application, connect an external account: suspends the run for a decision.</summary>
     ApprovalRequired,
 
-    /// <summary>Delete data, security/permission changes, destructive ops. Treated the same as <see cref="ApprovalRequired"/> until the Approval Center (scope item 8) adds a distinct confirmation flow.</summary>
+    /// <summary>Delete data, security/permission changes, destructive ops: suspends like <see cref="ApprovalRequired"/>, and an Approve also needs the typed confirmation phrase (spec 0007).</summary>
     ExplicitConfirmation,
+}
+
+/// <summary>
+/// Optional companion to <see cref="ITool"/> for approval gated tools: describes
+/// what the action will do, its target, and the document versions it involves,
+/// so the Approval center can show evidence (spec 0007, AC-3). Called once,
+/// when the run suspends, with the same context the tool will execute with;
+/// the result is frozen onto the approval. A tool that uses a document should
+/// take its version id as an argument (pinned), so the version shown here is
+/// the version that executes.
+/// </summary>
+public interface IApprovalEvidenceProvider
+{
+    Task<ApprovalEvidence> DescribeForApprovalAsync(ToolExecutionContext context, CancellationToken cancellationToken);
 }
 
 /// <summary>What a tool needs to execute: the calling profile and the plan's arguments for this step.</summary>
