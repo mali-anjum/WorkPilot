@@ -1,7 +1,7 @@
 # 0006. AI provider abstraction
 
 **Date**: 2026-09-24
-**Status**: Proposed
+**Status**: In Progress
 
 ## Summary
 
@@ -97,6 +97,8 @@ Tracked defaults: `appsettings.json` declares `OpenAI` and `DeepSeek` (kind, end
 3. Bounded calls and failure path: per provider `TimeoutSeconds`; `ChatClientPlanner` wraps a failed client call in `PlannerUnavailableException`; `PlanRunJob` fails the run and logs it, satisfies **AC-6**
 4. Secrets: add a `UserSecretsId` to the Api project; document the key setup in the scope row and `verify.md`, satisfies **AC-4**
 5. Prove the swap live: run the Api against two local OpenAI compatible servers, trigger a run with each provider active, and confirm which server answered, satisfies **AC-1**, **AC-2**
+
+`/develop` (2026-09-24): all 5 tasks built. `WorkPilot.AI/Providers/` holds `AiOptions` (+ `AiProviderOptions`, `AiProviderKinds`), `AiOptionsValidator`, `AiChatClientFactory` (the only OpenAI SDK touch point), `AiProviderStartupLogger`, and `AddWorkPilotChatClient`; `Program.cs` swaps its hardcoded `FakeChatClient` line for one `AddWorkPilotChatClient(builder.Configuration)` call. `ChatClientPlanner` wraps a failed client call in the new `PlannerUnavailableException` (`Application/Modules/Agent/IPlanner.cs`), which `PlanRunJob` now treats like a parse failure. The Api project gained a `UserSecretsId`. Exercised live on port 5207 against `wp_f07_ai` and local OpenAI compatible servers: the same "list my profile" run completed on `OpenAI` then `DeepSeek` with only `AI__ActiveProvider` changed, each server saw its own model and bearer key; a 500 provider and a 3s timeout provider both left the run `Failed`, not `Planning`; five bad configs each stopped startup with the key named. No migration. Note for AC-6: `TimeoutSeconds` bounds each HTTP try, and the SDK makes up to 4 tries, so the worst case wait is about 4 times the timeout plus backoff.
 
 ## Consequences
 

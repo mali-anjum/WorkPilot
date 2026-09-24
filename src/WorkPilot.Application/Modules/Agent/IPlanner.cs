@@ -11,11 +11,19 @@ public sealed record AgentPlan(IReadOnlyList<PlannedToolCall> Steps);
 public sealed class PlanParseException(string message) : Exception(message);
 
 /// <summary>
+/// The AI provider behind the Planner could not be reached or refused the
+/// call (timeout, network error, auth failure, rate limit, server error),
+/// after the provider client's own transient retries (spec 0006, AC-6).
+/// </summary>
+public sealed class PlannerUnavailableException(string message, Exception innerException) : Exception(message, innerException);
+
+/// <summary>
 /// Turns a goal into an ordered plan of tool calls via a single upfront model
 /// call (spec 0005's chosen plan-then-execute shape, not a re-planning loop).
 /// </summary>
 public interface IPlanner
 {
     /// <exception cref="PlanParseException">The model's output didn't parse into a valid, non-empty plan even after one retry.</exception>
+    /// <exception cref="PlannerUnavailableException">The AI provider call itself failed.</exception>
     Task<AgentPlan> PlanAsync(string goal, IReadOnlyList<ToolDescriptor> availableTools, CancellationToken cancellationToken);
 }

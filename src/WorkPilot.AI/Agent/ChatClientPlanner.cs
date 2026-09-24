@@ -7,8 +7,7 @@ namespace WorkPilot.AI.Agent;
 /// <summary>
 /// Turns a goal into a plan via a single upfront <see cref="IChatClient"/>
 /// call (spec 0005's plan-then-execute shape). Provider agnostic: which
-/// IChatClient is actually wired in is scope item 7's decision, not this
-/// class's.
+/// IChatClient answers is configuration only (spec 0006, AI:ActiveProvider).
 /// </summary>
 public sealed class ChatClientPlanner(IChatClient chatClient) : IPlanner
 {
@@ -24,7 +23,18 @@ public sealed class ChatClientPlanner(IChatClient chatClient) : IPlanner
         for (var attempt = 1; attempt <= 2; attempt++)
         {
             var prompt = BuildPrompt(goal, availableTools, lastError);
-            var response = await chatClient.GetResponseAsync(prompt, PlanOptions, cancellationToken);
+            ChatResponse response;
+            try
+            {
+                response = await chatClient.GetResponseAsync(prompt, PlanOptions, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                // A provider timeout surfaces as a cancellation the caller never
+                // asked for, so it lands here too (spec 0006, AC-6).
+                throw new PlannerUnavailableException($"The AI provider call failed: {ex.Message}", ex);
+            }
+
             var steps = TryParseSteps(response.Text);
 
             if (steps is { Count: > 0 } &&

@@ -4,6 +4,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- AI provider keys live in user secrets locally, never in a tracked file
+         (docs/specs/0006-ai-provider-abstraction, AC-4). -->
+    <UserSecretsId>5be98a12-551b-4dd9-8e67-744a7f3e13ae</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

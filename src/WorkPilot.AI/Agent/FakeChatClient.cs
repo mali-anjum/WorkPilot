@@ -7,10 +7,8 @@ namespace WorkPilot.AI.Agent;
 
 /// <summary>
 /// A deterministic, no-network stand in for a real <see cref="IChatClient"/>.
-/// Registered by default because which provider actually answers the
-/// Planner's calls is scope item 7 ("AI provider abstraction"), not yet
-/// decided (docs/specs/0005-agent-orchestrator-core.md's premise note); swap
-/// this registration out once that decision lands. Picks the first tool the
+/// Active when the configured provider's <c>Kind</c> is <c>Fake</c>, the
+/// Development default (docs/specs/0006-ai-provider-abstraction). Picks the first tool the
 /// goal text mentions by name, falling back to the first tool listed, so the
 /// orchestrator's pipeline can be built and tested without a real API key.
 /// </summary>

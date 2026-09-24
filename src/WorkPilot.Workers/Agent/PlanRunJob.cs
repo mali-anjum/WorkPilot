@@ -35,8 +35,11 @@ public sealed class PlanRunJob(WorkPilotDbContext db, IPlanner planner, IToolReg
         {
             plan = await planner.PlanAsync(run.Goal, descriptors, CancellationToken.None);
         }
-        catch (PlanParseException)
+        catch (Exception ex) when (ex is PlanParseException or PlannerUnavailableException)
         {
+            // A provider failure fails the run rather than stranding it at
+            // Planning; the chat client's logging middleware already logged
+            // the cause (spec 0006, AC-6).
             run.TransitionTo(AgentRunStatus.Failed);
             await WorkflowMirror.SyncAsync(db, run, CancellationToken.None);
             await db.SaveChangesAsync();

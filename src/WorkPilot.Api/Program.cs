@@ -1,8 +1,8 @@
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.AI;
 using WorkPilot.AI.Agent;
+using WorkPilot.AI.Providers;
 using WorkPilot.Application.Modules.Agent;
 using WorkPilot.Application.Modules.Identity;
 using WorkPilot.Domain.Modules.Agent;
@@ -49,9 +49,9 @@ builder.Services.AddScoped<IProfileProvisioningService, ProfileProvisioningServi
 
 // Agent orchestrator core (docs/specs/0005-agent-orchestrator-core.md): Planner ->
 // Policy Engine -> Tool Registry -> Execution Engine -> Verification Engine ->
-// Approval Engine -> Audit. FakeChatClient stands in until scope item 7 ("AI
-// provider abstraction") picks and wires a real IChatClient.
-builder.Services.AddSingleton<IChatClient, FakeChatClient>();
+// Approval Engine -> Audit. The Planner's IChatClient is whichever provider
+// AI:ActiveProvider names, validated at startup (docs/specs/0006-ai-provider-abstraction).
+builder.Services.AddWorkPilotChatClient(builder.Configuration);
 builder.Services.AddScoped<IPlanner, ChatClientPlanner>();
 builder.Services.AddScoped<IPolicyEngine, PolicyEngine>();
 builder.Services.AddScoped<IVerificationEngine, VerificationEngine>();
