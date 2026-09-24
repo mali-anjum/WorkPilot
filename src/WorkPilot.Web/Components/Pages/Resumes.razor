@@ -1,0 +1,108 @@
+@page "/resumes"
+@using WorkPilot.Application.Modules.Profile.Resumes
+@using WorkPilot.Domain.Modules.Profile
+@using WorkPilot.Web.Features.Resumes
+@inject IResumesApiClient ResumesApi
+@inject NavigationManager Navigation
+
+<HeadContent><link rel="stylesheet" href="css/resumes.css" /></HeadContent>
+<PageTitle>Resumes</PageTitle>
+
+<PageHeader Title="Resumes" Description="Your base and tailored resumes. A version an application used is locked; editing it makes a new version." />
+
+@if (_error is not null)
+{
+    <p class="wp-resumes__error" role="alert">@_error</p>
+}
+
+@if (_resumes is null)
+{
+    <p class="wp-resumes__muted">Loading…</p>
+}
+else if (_resumes.Count == 0)
+{
+    <EmptyState Title="No resumes yet" Description="Add your base resume below to get started." Icon="📄" />
+}
+else
+{
+    <ul class="wp-resumes__list">
+        @foreach (var resume in _resumes)
+        {
+            <li class="wp-resumes__item">
+                <a class="wp-resumes__name" href="@($"/resumes/{resume.Id}")">@resume.Name</a>
+                <Badge Status="@(resume.Kind == "Tailored" ? StatusKind.Info : StatusKind.Neutral)">@resume.Kind</Badge>
+                @if (resume.TargetCompany is not null)
+                {
+                    <span class="wp-resumes__muted">for @resume.TargetCompany</span>
+                }
+                <span class="wp-resumes__muted">v@(resume.LatestVersionNumber) · @resume.VersionCount version(s)</span>
+                <Badge Status="@(resume.LatestIsLocked ? StatusKind.Warning : StatusKind.Success)">@(resume.LatestIsLocked ? "Locked" : "Draft")</Badge>
+            </li>
+        }
+    </ul>
+}
+
+<Card Title="Add a base resume">
+    <form class="wp-resumes__form" @onsubmit="CreateAsync">
+        <label>Name <input @bind="_name" maxlength="@ResumeRules.NameMaxLength" required /></label>
+        <label>Resume text <textarea @bind="_content" rows="10" maxlength="@ResumeRules.ContentMaxLength"></textarea></label>
+        <label>Note (optional) <input @bind="_note" maxlength="@ResumeRules.NoteMaxLength" /></label>
+        <label>File (optional: @string.Join(", ", ResumeRules.AllowedFileExtensions), up to 5 MB) <InputFile OnChange="OnFileChosen" accept="@string.Join(",", ResumeRules.AllowedFileExtensions)" /></label>
+        <Button Type="submit" Disabled="_busy">Create resume</Button>
+    </form>
+</Card>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private IReadOnlyList<ResumeSummaryDto>? _resumes;
+    private Guid _profileId;
+    private string _name = string.Empty;
+    private string _content = string.Empty;
+    private string? _note;
+    private IBrowserFile? _file;
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is null || ResumeWebExtensions.ProfileId((await AuthState).User) is not { } profileId)
+        {
+            _error = "Your session has no profile; sign in again.";
+            _resumes = [];
+            return;
+        }
+
+        _profileId = profileId;
+        _resumes = await ResumesApi.ListAsync(_profileId);
+    }
+
+    private void OnFileChosen(InputFileChangeEventArgs e) => _file = e.File;
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var upload = await ResumeFileReader.ReadAsync(_file);
+            var result = await ResumesApi.CreateAsync(_profileId, _name, _content, _note, upload);
+            if (result.Succeeded)
+            {
+                Navigation.NavigateTo($"/resumes/{result.Value!.Id}");
+                return;
+            }
+
+            _error = result.Error;
+        }
+        catch (ResumeFileTooLargeException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

@@ -1,0 +1,219 @@
+@page "/resumes/{Id:guid}"
+@using WorkPilot.Application.Modules.Profile.Resumes
+@using WorkPilot.Domain.Modules.Profile
+@using WorkPilot.Web.Features.Resumes
+@inject IResumesApiClient ResumesApi
+@inject NavigationManager Navigation
+
+<HeadContent><link rel="stylesheet" href="css/resumes.css" /></HeadContent>
+<PageTitle>@(_resume?.Name ?? "Resume")</PageTitle>
+
+@if (_notFound)
+{
+    <PageHeader Title="Resume not found" />
+    <EmptyState Title="This resume doesn't exist" Description="It may belong to another profile or never existed." Icon="📄" />
+}
+else if (_resume is null)
+{
+    <p class="wp-resumes__muted">Loading…</p>
+}
+else
+{
+    var latest = _resume.Versions[0];
+    <PageHeader Title="@_resume.Name" Description="@(_resume.Kind == "Tailored" ? $"Tailored for {_resume.TargetCompany}" : "Base resume")" />
+    <p><a href="/resumes">← All resumes</a></p>
+
+    @if (_message is not null)
+    {
+        <p class="wp-resumes__message" role="status">@_message</p>
+    }
+    @if (_error is not null)
+    {
+        <p class="wp-resumes__error" role="alert">@_error</p>
+    }
+
+    <Card Title="@($"Edit (newest is v{latest.VersionNumber}, {(latest.IsLocked ? "locked" : "draft")})")">
+        @if (latest.IsLocked)
+        {
+            <p class="wp-resumes__muted">v@(latest.VersionNumber) was used by an application and is locked. Saving creates v@(latest.VersionNumber + 1).</p>
+        }
+        else
+        {
+            <p class="wp-resumes__muted">v@(latest.VersionNumber) is a draft. Saving updates it in place until an application uses it.</p>
+        }
+        <form class="wp-resumes__form" @onsubmit="ReviseAsync">
+            <label>Resume text <textarea @bind="_content" rows="14" maxlength="@ResumeRules.ContentMaxLength"></textarea></label>
+            <label>Note (optional) <input @bind="_note" maxlength="@ResumeRules.NoteMaxLength" /></label>
+            <label>Replace file (optional) <InputFile OnChange="OnFileChosen" accept="@string.Join(",", ResumeRules.AllowedFileExtensions)" /></label>
+            @if (latest.FileName is not null)
+            {
+                <label class="wp-resumes__inline"><input type="checkbox" @bind="_removeFile" /> Remove the current file (@latest.FileName)</label>
+            }
+            <Button Type="submit" Disabled="_busy">Save</Button>
+        </form>
+    </Card>
+
+    <Card Title="Tailor for a company">
+        <form class="wp-resumes__form" @onsubmit="TailorAsync">
+            <label>Company <input @bind="_targetCompany" maxlength="@ResumeRules.TargetCompanyMaxLength" required /></label>
+            <label>New resume name <input @bind="_tailoredName" maxlength="@ResumeRules.NameMaxLength" required /></label>
+            <label>Copy from
+                <select @bind="_tailorSourceId">
+                    @foreach (var v in _resume.Versions)
+                    {
+                        <option value="@v.Id">v@(v.VersionNumber)@(v.IsLocked ? " (locked)" : " (draft)")</option>
+                    }
+                </select>
+            </label>
+            <Button Type="submit" Variant="ButtonVariant.Secondary" Disabled="_busy">Create tailored resume</Button>
+        </form>
+    </Card>
+
+    <Card Title="Version history">
+        <ol class="wp-resumes__history">
+            @foreach (var v in _resume.Versions)
+            {
+                <li class="wp-resumes__version" data-version="@v.VersionNumber">
+                    <div class="wp-resumes__version-head">
+                        <strong>v@(v.VersionNumber)</strong>
+                        <Badge Status="@(v.IsLocked ? StatusKind.Warning : StatusKind.Success)">@(v.IsLocked ? "Locked" : "Draft")</Badge>
+                        <span class="wp-resumes__muted">created @v.CreatedAt.ToLocalTime().ToString("g")@(v.UpdatedAt != v.CreatedAt ? $", edited {v.UpdatedAt.ToLocalTime():g}" : "")</span>
+                        @if (v.IsLocked)
+                        {
+                            <span class="wp-resumes__muted">used by application @v.LockedByApplicationId on @v.LockedAt?.ToLocalTime().ToString("g")</span>
+                        }
+                    </div>
+                    @if (v.Note is not null)
+                    {
+                        <p class="wp-resumes__note">@v.Note</p>
+                    }
+                    @if (v.FileName is not null)
+                    {
+                        <p><a href="@($"/resumes/versions/{v.Id}/file")" download>@v.FileName</a> <span class="wp-resumes__muted">(@FormatSize(v.FileSizeBytes))</span></p>
+                    }
+                    <details>
+                        <summary>Text</summary>
+                        <pre class="wp-resumes__content">@v.Content</pre>
+                    </details>
+                </li>
+            }
+        </ol>
+    </Card>
+}
+
+@code {
+    /// <summary>The resume id from the route.</summary>
+    [Parameter] public Guid Id { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private ResumeDetailDto? _resume;
+    private bool _notFound;
+    private Guid _profileId;
+    private string _content = string.Empty;
+    private string? _note;
+    private IBrowserFile? _file;
+    private bool _removeFile;
+    private string _targetCompany = string.Empty;
+    private string _tailoredName = string.Empty;
+    private Guid _tailorSourceId;
+    private string? _message;
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AuthState is null || ResumeWebExtensions.ProfileId((await AuthState).User) is not { } profileId)
+        {
+            _notFound = true;
+            return;
+        }
+
+        _profileId = profileId;
+        Show(await ResumesApi.GetAsync(_profileId, Id));
+    }
+
+    private void Show(ResumeDetailDto? resume)
+    {
+        _resume = resume;
+        _notFound = resume is null;
+        if (resume is null)
+        {
+            return;
+        }
+
+        var latest = resume.Versions[0];
+        _content = latest.Content;
+        _note = latest.Note;
+        _removeFile = false;
+        _file = null;
+        _tailorSourceId = latest.Id;
+    }
+
+    private void OnFileChosen(InputFileChangeEventArgs e) => _file = e.File;
+
+    private async Task ReviseAsync()
+    {
+        _busy = true;
+        _error = null;
+        _message = null;
+        try
+        {
+            var upload = await ResumeFileReader.ReadAsync(_file);
+            var result = await ResumesApi.ReviseAsync(_profileId, Id, _content, _note, upload, _removeFile);
+            if (!result.Succeeded)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            var revised = result.Value!;
+            _message = revised.Outcome switch
+            {
+                "CreatedVersion" => $"Saved as new version v{revised.VersionNumber} (the previous version is locked).",
+                "UpdatedDraft" => $"Draft v{revised.VersionNumber} updated.",
+                _ => "No changes to save.",
+            };
+            Show(revised.Resume);
+        }
+        catch (ResumeFileTooLargeException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task TailorAsync()
+    {
+        _busy = true;
+        _error = null;
+        _message = null;
+        try
+        {
+            var result = await ResumesApi.TailorAsync(_profileId, _tailorSourceId, _tailoredName, _targetCompany);
+            if (result.Succeeded)
+            {
+                Navigation.NavigateTo($"/resumes/{result.Value!.Id}");
+                return;
+            }
+
+            _error = result.Error;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string FormatSize(long? bytes) => bytes switch
+    {
+        null => "",
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
+        _ => $"{bytes / (1024.0 * 1024):0.#} MB",
+    };
+}

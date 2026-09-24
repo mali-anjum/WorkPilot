@@ -1,7 +1,7 @@
 # 0009. Resume management
 
 **Date**: 2026-09-24
-**Status**: Proposed
+**Status**: In Progress
 
 ## Summary
 
@@ -108,11 +108,11 @@ Endpoints live in `src/WorkPilot.Api/Endpoints/ResumeEndpoints.cs` (`MapResumeEn
 
 Tracer Bullet: one thin thread (create, list, detail) through every layer first, then thicken with revise, lock, tailor, files, and the UI.
 
-1. [ ] Domain: extend `Resume`/`ResumeVersion` with the new fields, `CreateBase`, `Revise`, `Lock`, `CreateTailored`, the exceptions and rules, satisfies **AC-2**, **AC-3**, **AC-4**, **AC-5**, **AC-6**, **AC-8**, **AC-10**
-2. [ ] Infrastructure: entity configurations, `StoredResumeFile` + `PostgresResumeFileStore`, the single `AddResumeManagement` migration (columns, `resume_files`, trigger), applied and confirmed live, satisfies **AC-5**, **AC-7**
-3. [ ] Application + Infrastructure: `IResumeService`, DTOs, `IResumeFileStore`, `ResumeService` with profile scoping and the `WP409` mapping, satisfies **AC-1** to **AC-10**
-4. [ ] Api: `ResumeEndpoints` + `AddResumeManagement()` wired in `Program.cs`, satisfies **AC-1**, **AC-3**, **AC-4**, **AC-6**, **AC-7**, **AC-8**, **AC-9**
-5. [ ] Web: `ResumesApiClient`, `/resumes` and `/resumes/{id}` pages, file download proxy endpoint, nav line, satisfies **AC-1**, **AC-6**, **AC-7**
+1. [x] Domain: extend `Resume`/`ResumeVersion` with the new fields, `CreateBase`, `Revise`, `Lock`, `CreateTailored`, the exceptions and rules, satisfies **AC-2**, **AC-3**, **AC-4**, **AC-5**, **AC-6**, **AC-8**, **AC-10**
+2. [x] Infrastructure: entity configurations, `StoredResumeFile` + `PostgresResumeFileStore`, the single `AddResumeManagement` migration (columns, `resume_files`, trigger), applied and confirmed live, satisfies **AC-5**, **AC-7**
+3. [x] Application + Infrastructure: `IResumeService`, DTOs, `IResumeFileStore`, `ResumeService` with profile scoping and the `WP409` mapping, satisfies **AC-1** to **AC-10**
+4. [x] Api: `ResumeEndpoints` + `AddResumeManagement()` wired in `Program.cs`, satisfies **AC-1**, **AC-3**, **AC-4**, **AC-6**, **AC-7**, **AC-8**, **AC-9**
+5. [x] Web: `ResumesApiClient`, `/resumes` and `/resumes/{id}` pages, file download proxy endpoint, nav line, satisfies **AC-1**, **AC-6**, **AC-7**
 
 ## Consequences
 

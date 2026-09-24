@@ -11,6 +11,7 @@ using WorkPilot.Domain.Modules.Agent;
 using WorkPilot.Infrastructure.Modules.Agent;
 using WorkPilot.Infrastructure.Modules.Agent.Tools;
 using WorkPilot.Infrastructure.Modules.Identity;
+using WorkPilot.Infrastructure.Modules.Profile;
 using WorkPilot.Infrastructure.Persistence;
 using WorkPilot.Workers.Agent;
 using WorkPilot.Workers.Approvals;
@@ -49,6 +50,7 @@ builder.AddNpgsqlDbContext<WorkPilotDbContext>("workpilotdb");
 // internal endpoint over the Aspire service discovery network rather than
 // touching EF Core itself (docs/specs/0004-auth-app-shell.md).
 builder.Services.AddScoped<IProfileProvisioningService, ProfileProvisioningService>();
+builder.Services.AddResumeManagement(); // spec 0009
 
 // Agent orchestrator core (docs/specs/0005-agent-orchestrator-core.md): Planner ->
 // Policy Engine -> Tool Registry -> Execution Engine -> Verification Engine ->
@@ -243,6 +245,8 @@ app.MapGet("/internal/agent/runs/{id:guid}", async (Guid id, WorkPilotDbContext 
 // The approval engine (docs/specs/0007-approval-engine-center): the Approval
 // center view and the decide path, in Endpoints/ApprovalEndpoints.cs.
 app.MapApprovalEndpoints();
+
+app.MapResumeEndpoints(); // spec 0009
 
 app.Run();
 
