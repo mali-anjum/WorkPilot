@@ -1,34 +1,37 @@
 # 0006. AI provider abstraction
 
 **Date**: 2026-09-24
-**Status**: In Progress
+**Status**: Proposed
 
 ## Summary
 
-This decision picks how WorkPilot talks to a real AI model without tying any code to one vendor. The Planner (spec 0005) already depends only on `IChatClient`, the vendor neutral chat interface from `Microsoft.Extensions.AI`; this spec decides which concrete client sits behind it, and makes that choice pure configuration. You name a few providers in config (for example OpenAI and DeepSeek, both of which speak the same OpenAI style HTTP API), pick one with `AI:ActiveProvider`, and restart. Bad or missing provider settings stop the Api at startup with a clear message instead of failing later inside a background job.
+This spec replaces the fake AI client with real providers, chosen entirely by configuration. One adapter that speaks the OpenAI chat format covers OpenAI, Gemini, DeepSeek, and Ollama (each of them offers an OpenAI compatible endpoint), so switching the model behind the agent's Planner is a config change and a restart, never a code change. Each "purpose" (Planner today; cover letters and matching later) maps to a provider and model, with a Default fallback. Bad config stops the app at startup, provider outages fail the run loudly with an audit record, and the fake client stays available on purpose for tests and keyless development.
 
 ## Requirements
 
 **User stories**:
-- As the founder, I want to switch the model that plans agent runs between providers (for example OpenAI and DeepSeek) by changing configuration only, so that I can trade cost against quality without a code change or rebuild.
-- As the developer, I want a wrong or missing provider setting to stop the Api at startup with a message naming the bad key, so that I never discover it as a run stuck in the background.
-- As the founder, I want API keys kept out of the repo and out of logs, so that pushing the code never leaks a paid credential.
+- As the founder, I want to pick which AI provider and model the agent uses by editing configuration, so I can compare cost and quality across OpenAI, Gemini, DeepSeek, and a local Ollama model without touching code.
+- As the founder, I want different jobs (planning now, writing and matching later) to use different models, so cheap work runs on a cheap model and important writing runs on a strong one.
+- As the founder, I want a broken key or a provider outage to fail clearly and leave a record, so I never wonder why a run silently hung or which model produced a result.
 
-**Acceptance criteria** (the contract, each criterion is independently checkable):
-- **AC-1**: With `AI:ActiveProvider` naming a configured `OpenAICompatible` provider, the Planner's `IChatClient` call (spec 0005's `ChatClientPlanner`, unchanged) is sent over HTTP to that provider's `Endpoint`, asks for that provider's `Model`, and authenticates with that provider's `ApiKey` as a bearer token; a run triggered through `POST /internal/agent/runs` completes through spec 0005's pipeline on that provider's answer.
-- **AC-2**: Changing only `AI:ActiveProvider` (an appsettings value, user secret, or `AI__ActiveProvider` env var) between two configured providers, for example `OpenAI` and `DeepSeek`, and restarting the Api makes the same planning call go to the other provider's endpoint, model, and key. No code change, no rebuild.
-- **AC-3**: Invalid provider configuration fails Api startup (the host does not start serving) with an error naming the offending configuration key, for each of: `AI:ActiveProvider` missing or blank; `AI:ActiveProvider` naming no entry under `AI:Providers`; the active provider's `Kind` missing or unknown; for an `OpenAICompatible` active provider, `Endpoint` missing or not an absolute `http`/`https` URL, `Model` missing, or `ApiKey` missing; `TimeoutSeconds` outside 1 to 600. Providers that are declared but not active are not required to have a key.
-- **AC-4**: No API key is committed: no tracked config file carries an `ApiKey` value; keys come only from .NET user secrets (the Api project has a `UserSecretsId`) or environment variables (`AI__Providers__<Name>__ApiKey`). The key never appears in logs: the startup log line names the active provider, kind, endpoint, and model only. The key never reaches the Planner's prompt.
-- **AC-5**: In the Development environment with no extra configuration, the deterministic `Fake` provider (spec 0005's `FakeChatClient`) is active, so the app and every existing test run with no key and no network; a startup warning says the Fake provider is active. Outside Development nothing defaults to Fake.
-- **AC-6**: Provider calls are bounded and a provider failure never strands a run: each call uses the active provider's `TimeoutSeconds` (default 60), and when the provider still fails after the SDK's own transient retries (timeout, network error, 401, 429, 5xx), the run moves to `Failed` (not stuck at `Planning`) and the error is logged without the key.
+**Acceptance criteria** (the contract):
+- **AC-1**: The Planner's model call goes to the provider and model mapped to the `Planner` purpose, or to `Default` when `Planner` is not mapped. Changing only configuration (appsettings, user secrets, or environment variables) and restarting the Api switches it between any two configured providers, with no code change.
+- **AC-2**: One OpenAI compatible adapter serves OpenAI, Gemini, DeepSeek, and Ollama. Each provider is defined only by configuration (`Endpoint`, `ApiKey`, `RequiresApiKey`, `TimeoutSeconds`); adding another OpenAI compatible service is a config entry, not code.
+- **AC-3**: The reserved provider name `Fake` selects the deterministic `FakeChatClient`. The committed `appsettings.json` maps `Default` to `Fake`, so a fresh clone and the whole test suite run with no key and no network, in any environment. At startup, every purpose that resolves to `Fake` is logged as a warning, so a deployment left on `Fake` is obvious.
+- **AC-4**: Startup fails fast, before the Api serves a request, with one error listing every problem when AI config is invalid: no `Default` purpose; a purpose name that is not a known purpose; a purpose naming an unknown provider; a real provider purpose with no `Model`; a used provider with a missing or non absolute `http`/`https` `Endpoint`; a used provider with `RequiresApiKey` true (the default) and no `ApiKey`; `TimeoutSeconds` outside 1 to 600. The error message never contains a key value. Providers that no purpose uses are not checked.
+- **AC-5**: Transient provider errors (HTTP 408, 429, 5xx, network failures, and per attempt timeouts) are retried up to 2 more times with exponential backoff that honors `Retry-After`. Each attempt is cut off after the provider's `TimeoutSeconds` (default 60), so the worst case before a call gives up is about 3 × `TimeoutSeconds` plus backoff (roughly 3 minutes at the default). A call never falls over to a different provider.
+- **AC-6**: When the Planner's AI call still fails after retries, the run moves to `Failed` (never stuck at `Planning`) and one `AuditLog` row with action `PlanningFailed` records `{"reason": "provider_error", "purpose", "provider", "model", "error"}`, with no API key and no prompt or response text. An unparseable plan after the existing one retry (spec 0005, AC-7) also writes `PlanningFailed`, with `"reason": "unparseable_plan"`.
+- **AC-7**: Every AI call emits OpenTelemetry traces and metrics carrying provider, model, input and output token counts, and duration, visible in the Aspire dashboard. Prompt and response text is recorded only when `Ai:LogSensitiveData` is `true`; the default is `false`.
+- **AC-8**: `GET /health/ai` sends one tiny prompt through the `Default` purpose and returns `200` with `{status: "ok", purpose, provider, model, latencyMs}`, or `503` with `{status: "error", purpose, provider, model, error}`. `/health` and `/alive` never call a provider.
+- **AC-9**: The Planner accepts a JSON reply wrapped in a single markdown code fence (```` ```json … ``` ````), which real models often return even in JSON mode, before counting the reply as unparseable.
 
 ## Decision
 
-**Chosen option**: Option 1: `IChatClient` as the only abstraction, with one config selected provider built by the official OpenAI adapter (`Microsoft.Extensions.AI.OpenAI`) against any OpenAI compatible endpoint.
+**Chosen option**: Option 1: One OpenAI compatible adapter, keyed per purpose
 
-No new WorkPilot interface. A named provider list under `AI:Providers`, one active at a time, validated at startup; `Fake` stays available as a second provider kind for keyless development and tests.
+Every real provider goes through `Microsoft.Extensions.AI.OpenAI` pointed at that provider's OpenAI compatible base URL. Each known purpose gets its own keyed `IChatClient` built at startup from validated configuration, with retries, telemetry, logging, and error translation composed as a `Microsoft.Extensions.AI` middleware pipeline around it.
 
-**Implementation skills**: `microsoft-extensions-ai` (`.claude/skills/microsoft-extensions-ai/`) · `aspire` (`.claude/skills/aspire/`)
+**Implementation skills**: `microsoft-extensions-ai` (`managedcode/dotnet-skills`, `.claude/skills/microsoft-extensions-ai/`) · `aspire` (`managedcode/dotnet-skills`, `.claude/skills/aspire/`) · `csharp-xunit` (`github/awesome-copilot`, `.agents/skills/csharp-xunit/`)
 
 ## Rationale
 
@@ -36,105 +39,125 @@ Reasoning and options: see [rationale.md](rationale.md).
 
 ## Feature design
 
-**Data model sketch**: none. No table, no migration. Provider settings live in configuration, not the database (a runtime Settings screen for them is scope item 30's call, see Follow-up).
+**Where the code lives** (Clean Architecture):
+- `WorkPilot.Application/Modules/Agent/AiProviderException.cs`: a plain exception (`Purpose`, `Provider`, `Model`, safe `Message`), so `WorkPilot.Workers` can catch provider failures without referencing any AI SDK.
+- `WorkPilot.AI/Providers/`: `AiOptions` (bound config), `AiOptionsValidator` (`IValidateOptions<AiOptions>`), `AiPurposes` (the known purpose names: `Default`, `Planner`), `ResolvedAiPurpose` (purpose, provider name, model after the Default fallback), `AiChatClientFactory` (the only file that touches OpenAI SDK types), `ProviderErrorChatClient` (a `DelegatingChatClient`, meaning a wrapper that passes calls through, which turns provider failures into `AiProviderException`), and `AddWorkPilotAi(IConfiguration)`, which registers one keyed `IChatClient` per known purpose.
+- `WorkPilot.AI/Agent/ChatClientPlanner.cs` takes `[FromKeyedServices(AiPurposes.Planner)] IChatClient`.
+- `WorkPilot.AI/Agent/FakeChatClient.cs` stays, now selected only through provider `Fake`.
+- `WorkPilot.Api/Program.cs`: `AddWorkPilotAi(builder.Configuration)` replaces the `FakeChatClient` singleton; maps `/health/ai`.
+- `WorkPilot.ServiceDefaults`: tracing and metrics subscribe to the `Microsoft.Extensions.AI` telemetry source and meter.
 
-**Configuration shape** (the `AI` section, bound to an options class in `WorkPilot.AI`):
+**Data model sketch**: no schema change. Configuration is the only new model:
 
-| Key | Required | Meaning |
-|---|---|---|
-| `AI:ActiveProvider` | yes | name of one entry under `AI:Providers` |
-| `AI:Providers:<Name>:Kind` | yes (active) | `OpenAICompatible` or `Fake` |
-| `AI:Providers:<Name>:Endpoint` | yes for `OpenAICompatible` | absolute base URL, e.g. `https://api.openai.com/v1`, `https://api.deepseek.com/v1` |
-| `AI:Providers:<Name>:Model` | yes for `OpenAICompatible` | model id sent on every call, e.g. `gpt-4.1-mini`, `deepseek-chat` |
-| `AI:Providers:<Name>:ApiKey` | yes for `OpenAICompatible` | secret; user secrets or env var only, never a tracked file |
-| `AI:Providers:<Name>:TimeoutSeconds` | no (default 60, range 1 to 600) | per HTTP call network timeout |
+| Config path | Type | Required | Notes |
+|---|---|---|---|
+| `Ai:LogSensitiveData` | bool | no, default `false` | turns prompt and response capture on in telemetry and logs |
+| `Ai:Providers:{name}:Endpoint` | absolute URI | yes, when used | OpenAI compatible base URL |
+| `Ai:Providers:{name}:ApiKey` | string | when `RequiresApiKey` and used | never committed; user secrets in dev, env var in prod |
+| `Ai:Providers:{name}:RequiresApiKey` | bool | no, default `true` | `false` for Ollama |
+| `Ai:Providers:{name}:TimeoutSeconds` | int 1 to 600 | no, default `60` | per attempt cutoff |
+| `Ai:Purposes:{purpose}:Provider` | string | yes | a key of `Ai:Providers`, or `Fake` |
+| `Ai:Purposes:{purpose}:Model` | string | yes unless `Fake` | e.g. `gpt-4o-mini`, `gemini-2.5-flash`, `deepseek-chat`, `qwen2.5:7b` |
 
-Tracked defaults: `appsettings.json` declares `OpenAI` and `DeepSeek` (kind, endpoint, model; no key, no active provider). `appsettings.Development.json` declares `Fake` and sets `ActiveProvider` to `Fake`.
+Provider and purpose names match case insensitively (standard .NET config binding). `Fake` is reserved: it may not be declared under `Ai:Providers`. The committed `appsettings.json` ships the four provider presets with endpoints and no keys (`openai` → `https://api.openai.com/v1`, `gemini` → `https://generativelanguage.googleapis.com/v1beta/openai/`, `deepseek` → `https://api.deepseek.com/v1`, `ollama` → `http://localhost:11434/v1` with `RequiresApiKey: false` and `TimeoutSeconds: 180`), and `Purposes:Default` → `{ "Provider": "Fake" }`.
 
-**Composition** (in DI, one place): `AddWorkPilotChatClient(configuration)` binds the options, registers the validator with `ValidateOnStart`, and registers `IChatClient` as a singleton through `AddChatClient(factory).UseLogging()`. The factory reads the active provider: `OpenAICompatible` builds `new OpenAIClient(key, { Endpoint, NetworkTimeout }).GetChatClient(Model).AsIChatClient()`; `Fake` builds `FakeChatClient`. A small hosted service resolves the client at startup and logs the provider line (AC-4, AC-5), so construction errors also surface at startup.
+**Client pipeline per purpose** (built once, singleton, keyed by purpose name):
+1. Resolve the purpose's mapping (its own entry, else `Default`) into a `ResolvedAiPurpose`.
+2. `Fake` → `FakeChatClient`. Otherwise `new OpenAIClient(new ApiKeyCredential(apiKey ?? "unused"), new OpenAIClientOptions { Endpoint, NetworkTimeout = TimeoutSeconds, RetryPolicy = new ClientRetryPolicy(maxRetries: 2) }).GetChatClient(model).AsIChatClient()`. (`"unused"` because the SDK requires a credential; Ollama ignores it.)
+3. Wrap with `ChatClientBuilder`: `ProviderErrorChatClient` (innermost, so it sees final failures after the SDK's own retries) → `UseOpenTelemetry(configure: c => c.EnableSensitiveData = LogSensitiveData)` → `UseLogging()`.
 
-**API surface**: no new endpoint. The existing spec 0005 endpoints are the entry point (`POST /internal/agent/runs`, `GET /internal/agent/runs/{id}`).
+`ProviderErrorChatClient` catches exactly: `System.ClientModel.ClientResultException` (HTTP error status after retries), `HttpRequestException` (network), and `OperationCanceledException` **only when the caller's token was not cancelled** (the SDK's `NetworkTimeout`). It rethrows each as `AiProviderException` with the message truncated to 500 characters. A caller cancellation and any other exception type (a real bug) pass through untouched, so bugs are never mislabeled as provider outages.
+
+**State transitions**: no new states. `AgentRun` already allows `Planning → Failed`; this feature makes that transition happen on provider failure (AC-6).
+
+**API surface**:
+| Endpoint | Method | Key inputs | Key outputs | Auth | Key errors |
+|---|---|---|---|---|---|
+| `/health/ai` | GET | none | `status`, `purpose`, `provider`, `model`, `latencyMs` | none; internal network only (the Api has no external endpoint, same as `/internal/*`) | `503` with `status: "error"` and `error` when the provider call fails or times out |
+
+No other endpoint changes. `/internal/agent/runs` behaves as in spec 0005; only its planning outcome gains the `PlanningFailed` path. With `Default` on `Fake`, `/health/ai` returns `200` with `provider: "Fake"` (it proves wiring, not a real key).
 
 **Value sourcing**:
-
 | Action | Value produced / displayed | Source |
 |---|---|---|
-| Planner call | which client answers | `AI:ActiveProvider` → the named `AI:Providers:<Name>` entry's `Kind` |
-| Planner call | HTTP base URL | active provider's `Endpoint` |
-| Planner call | model id in the request body | active provider's `Model` (the Planner never sets `ChatOptions.ModelId`) |
-| Planner call | `Authorization: Bearer` value | active provider's `ApiKey` (user secrets or env var) |
-| Planner call | network timeout | active provider's `TimeoutSeconds`, else 60 |
-| Planner call | transient retry count and backoff | the OpenAI SDK's built in pipeline defaults (3 retries, exponential backoff on 408/429/5xx); not configurable here |
-| Planner call | JSON mode flag | spec 0005's `ChatClientPlanner` (`ChatResponseFormat.Json`), mapped by the adapter to `response_format: json_object` |
-| Startup | the provider log line | active provider name, `Kind`, `Endpoint`, `Model`; never `ApiKey` |
-| Startup failure | error message | the validator, naming the key path (e.g. `AI:Providers:DeepSeek:ApiKey`) |
-| Provider failure | run status `Failed` | `PlanRunJob`, on `PlannerUnavailableException` thrown by `ChatClientPlanner` when the client call throws |
+| Planner call | which provider and model answer | `Ai:Purposes:Planner`, else `Ai:Purposes:Default` (config) |
+| Planner call | endpoint, key, timeout | `Ai:Providers:{provider}` (config; key from user secrets or env var) |
+| Planner call | retry count and backoff | fixed: `ClientRetryPolicy(maxRetries: 2)`, the SDK's exponential backoff honoring `Retry-After` |
+| `PlanningFailed` audit | `purpose`, `provider`, `model` | carried on `AiProviderException`, set by `ProviderErrorChatClient` from its `ResolvedAiPurpose`; for `unparseable_plan`, from the Planner client's `ResolvedAiPurpose` (registered keyed alongside the client) |
+| `PlanningFailed` audit | `error` | the provider exception message, truncated to 500 characters; for `unparseable_plan`, the `PlanParseException` message |
+| `PlanningFailed` audit | actor, target | actor `"Agent"`, target type `"AgentRun"`, target id the run's id (spec 0005's convention) |
+| telemetry | provider, model, token counts, duration | emitted by `UseOpenTelemetry` from the response `Usage` and client metadata |
+| `/health/ai` | `purpose`, `provider`, `model` | the `Default` purpose's `ResolvedAiPurpose` (provider is the config name, e.g. `deepseek`, not the SDK's `openai`) |
+| `/health/ai` | `latencyMs` | a `Stopwatch` around the one call |
+| `/health/ai` | the probe prompt | fixed text `Reply with the single word OK.`, `MaxOutputTokens = 5` |
 
 **Key invariants**:
-- Exactly one provider is active per process; changing it takes a restart, never a code change.
-- Domain, Application, Workers, and the Planner depend only on `IChatClient`; no type from the OpenAI SDK appears outside `WorkPilot.AI/Providers`.
-- An API key is read only from configuration at client construction; it is never logged, persisted, or put into a prompt.
-- Nothing outside Development defaults to the Fake provider.
+- No code outside `WorkPilot.AI` names a vendor, SDK type, endpoint, or model; consumers ask for a purpose.
+- An API key never appears in any log line, telemetry attribute, audit payload, exception message, or HTTP response.
+- A purpose resolves to exactly one provider and model for the lifetime of the process: no runtime failover, no hot reload.
+- The committed `appsettings.json` never holds an API key.
+- A purpose not in `AiPurposes` cannot appear in config (a typo guard, AC-4).
 
-**Security model**: single user, server side only. The key lives in the Api process's configuration (user secrets in development, env vars on the VPS). The LLM still receives only the goal plus tool descriptors (spec 0005, AC-6). Provider traffic goes over HTTPS for the real endpoints; a plain `http` endpoint is allowed only because local OpenAI compatible servers (tests, Ollama style gateways) use it.
+**Security model**: single user, internal only. The Api has no external endpoint (only `web` is exposed in `AppHost.cs`), so `/health/ai` is reachable only inside the Aspire or Compose network, like `/internal/*`. Keys live in `dotnet user-secrets` (Api project) in development and in the Compose `.env` as `Ai__Providers__<name>__ApiKey` in production, never in the repo or the database. Prompts will soon carry the founder's resume and profile (personal data), so prompt and response capture is off by default and switched on only on purpose. The LLM never receives keys or tokens (spec 0005 rule, unchanged).
 
 **Configuration required**:
-- `AI__ActiveProvider`: which provider plans runs (production must set it; Development defaults to `Fake`).
-- `AI__Providers__OpenAI__ApiKey`, `AI__Providers__DeepSeek__ApiKey`: the keys, set only for the provider(s) you use, via `dotnet user-secrets` in `src/WorkPilot.Api` or env vars.
-- Optional overrides: `AI__Providers__<Name>__Endpoint`, `__Model`, `__TimeoutSeconds`, or a whole new named provider.
+- `Ai__Providers__openai__ApiKey`: OpenAI key (only when a purpose uses `openai`)
+- `Ai__Providers__gemini__ApiKey`: Google AI Studio key (only when used)
+- `Ai__Providers__deepseek__ApiKey`: DeepSeek key (only when used)
+- `Ai__Purposes__Default__Provider` / `Ai__Purposes__Default__Model`, and optionally `Ai__Purposes__Planner__*`: the active mapping
+- `Ai__LogSensitiveData`: optional, `false` by default
+- Development equivalent: `dotnet user-secrets set "Ai:Providers:openai:ApiKey" "<key>" --project src/WorkPilot.Api`
+- Prerequisite for the live verify only: the four keys (the founder has them) and Ollama running locally with a small model pulled.
 
-**Critical test scenarios**:
-- Happy path: two providers configured against two local OpenAI compatible HTTP servers; with each one active in turn, the resolved `IChatClient` drives `ChatClientPlanner` to a valid plan and only that provider's server sees the request, with its model and bearer key, verifies **AC-1**, **AC-2**.
-- Failure case: each invalid configuration listed in AC-3 stops host startup with an `OptionsValidationException` naming the key; a declared but inactive provider with no key does not, verifies **AC-3**.
-- Failure case: a provider that returns 500 (or times out) makes `ChatClientPlanner` throw `PlannerUnavailableException`, and `PlanRunJob` moves the run to `Failed`, verifies **AC-6**.
-- Default: the Api under `WebApplicationFactory` (Development) resolves the Fake provider, verifies **AC-5**.
-- Secrets: tracked `appsettings*.json` contain no `ApiKey` value; the startup log line contains no key, verifies **AC-4**.
+**Critical test scenarios** (tests start an in process stub server that speaks the OpenAI chat format, and configure providers against it through in memory configuration; `SharedApiFactory` also sets `Ai__Purposes__Default__Provider=Fake` explicitly, never relying on the host environment name):
+- Happy path: `Planner` → stub provider `a`, model `m1`, key `sk-test-a`; the plan comes from the stub, and the stub saw path `/chat/completions`, model `m1`, and bearer `sk-test-a`. Switching config to provider `b`, model `m2` routes there, verifies **AC-1**, **AC-2**
+- Fallback: with no `Planner` mapping, the Planner uses `Default`, verifies **AC-1**
+- Keyless: the committed config runs a full agent run on `Fake`, verifies **AC-3**
+- Validation: each invalid case in AC-4 yields a failure naming it; a planted key value never appears in the message, verifies **AC-4**
+- Retry: a stub returning `429` with `Retry-After: 0` twice then success yields a plan; `500` three times fails; a stub slower than `TimeoutSeconds` fails, verifies **AC-5**
+- Failure case: provider keeps failing → run `Failed`, one `PlanningFailed` row with `reason: provider_error`, provider, and model, and neither the key nor the goal text in the payload, verifies **AC-6**
+- Telemetry privacy: with `LogSensitiveData` false, captured logs contain no prompt text; with true, they do, verifies **AC-7**
+- Health: `/health/ai` returns `200` against a working stub and `503` against a failing one; `/health` makes no stub call, verifies **AC-8**
+- Fenced JSON: a reply wrapped in a ```` ```json ```` fence parses into a plan, verifies **AC-9**
+- Auth/permission: not applicable beyond the network boundary (single user, internal Api); covered by the key never leaving config, verifies **AC-4**, **AC-6**
 
 ## Build plan
 
-1. Tracer thread: add `Microsoft.Extensions.AI.OpenAI` to `WorkPilot.AI`; add the options classes and `AddWorkPilotChatClient` (both `OpenAICompatible` and `Fake` kinds) under `WorkPilot.AI/Providers`; replace the hardcoded `FakeChatClient` registration in `Program.cs` with one call; add the tracked provider defaults (`appsettings.json`) and the Development `Fake` default, satisfies **AC-1**, **AC-2**, **AC-5**
-2. Startup validation: an `IValidateOptions` validator with `ValidateOnStart` covering every AC-3 case, plus the startup hosted service that resolves the client and logs the provider line (Fake gets a warning), satisfies **AC-3**, **AC-4**, **AC-5**
-3. Bounded calls and failure path: per provider `TimeoutSeconds`; `ChatClientPlanner` wraps a failed client call in `PlannerUnavailableException`; `PlanRunJob` fails the run and logs it, satisfies **AC-6**
-4. Secrets: add a `UserSecretsId` to the Api project; document the key setup in the scope row and `verify.md`, satisfies **AC-4**
-5. Prove the swap live: run the Api against two local OpenAI compatible servers, trigger a run with each provider active, and confirm which server answered, satisfies **AC-1**, **AC-2**
+Tracer Bullet: first a thin working thread from config to a real HTTP call, then harden it. (Commits `21c8cc4` and `ca32dfc` on this branch came from an earlier, superseded draft with a single `AI:ActiveProvider`; the build reworks that code toward this spec rather than starting over.)
 
-`/develop` (2026-09-24): all 5 tasks built. `WorkPilot.AI/Providers/` holds `AiOptions` (+ `AiProviderOptions`, `AiProviderKinds`), `AiOptionsValidator`, `AiChatClientFactory` (the only OpenAI SDK touch point), `AiProviderStartupLogger`, and `AddWorkPilotChatClient`; `Program.cs` swaps its hardcoded `FakeChatClient` line for one `AddWorkPilotChatClient(builder.Configuration)` call. `ChatClientPlanner` wraps a failed client call in the new `PlannerUnavailableException` (`Application/Modules/Agent/IPlanner.cs`), which `PlanRunJob` now treats like a parse failure. The Api project gained a `UserSecretsId`. Exercised live on port 5207 against `wp_f07_ai` and local OpenAI compatible servers: the same "list my profile" run completed on `OpenAI` then `DeepSeek` with only `AI__ActiveProvider` changed, each server saw its own model and bearer key; a 500 provider and a 3s timeout provider both left the run `Failed`, not `Planning`; five bad configs each stopped startup with the key named. No migration. Note for AC-6: `TimeoutSeconds` bounds each HTTP try, and the SDK makes up to 4 tries, so the worst case wait is about 4 times the timeout plus backoff.
+1. **Thin thread.** Add `Microsoft.Extensions.AI.OpenAI` (same release line as `Microsoft.Extensions.AI` 10.10.0) to `WorkPilot.AI`. Add `AiOptions`, `AiPurposes`, `ResolvedAiPurpose`, and `AddWorkPilotAi` building keyed clients (Fake or OpenAI compatible). Point `ChatClientPlanner` at the `Planner` key. Commit the provider presets and `Default → Fake` in `appsettings.json`. Add the in process stub server test helper and prove config routing and switching, satisfies **AC-1**, **AC-2**, **AC-3**
+2. **Fail fast config.** `AiOptionsValidator` with `ValidateOnStart()`, collecting every problem into one message with no key values; the startup warning for purposes on `Fake`, satisfies **AC-3**, **AC-4**
+3. **Failures and resilience.** Per provider `NetworkTimeout` and `ClientRetryPolicy(maxRetries: 2)`. `AiProviderException` and `ProviderErrorChatClient`. `PlanRunJob` catches `AiProviderException` and `PlanParseException`, fails the run, and audits `PlanningFailed`. The Planner strips one surrounding code fence before parsing, satisfies **AC-5**, **AC-6**, **AC-9**
+4. **Telemetry.** `UseOpenTelemetry` and `UseLogging` in the pipeline, with `EnableSensitiveData` from `Ai:LogSensitiveData`; subscribe the tracing source and meter in `ServiceDefaults`, satisfies **AC-7**
+5. **Health probe.** Map `GET /health/ai` against the `Default` purpose, outside the `/health` health check registry, satisfies **AC-8**
+6. **Developer setup.** Document the user secrets commands and the `Ai__…` env vars (Api `appsettings.json` comments and the Compose env example), satisfies **AC-2**, **AC-3**
+7. **Live proof** (during `/check verify`): run the same goal through OpenAI, Gemini, DeepSeek, and Ollama by changing only config; confirm the Aspire dashboard shows tokens per call; break a key and confirm the startup or `PlanningFailed` behavior, satisfies **AC-1**, **AC-2**, **AC-5**, **AC-6**, **AC-7**, **AC-8**
 
 ## Consequences
 
 **Positive**:
-- Any OpenAI compatible provider (OpenAI, DeepSeek, OpenRouter, a local Ollama or vLLM server) is a config entry, not code.
-- The Planner, and every later feature that injects `IChatClient`, stays vendor neutral and unit testable with a scripted client.
-- Misconfiguration surfaces at startup, per `AGENTS.md`.
+- Switching or comparing models across four vendors is a config edit, and any future OpenAI compatible service (OpenRouter, Groq, a self hosted vLLM) needs no code.
+- Later features (cover letters, matching) get their own model by adding one purpose constant and one config line.
+- A provider outage now ends a run cleanly with an audited reason, instead of leaving it stuck at `Planning`.
+- Token use and latency per call are visible in the Aspire dashboard from day one, with no new table.
 
 **Negative / tradeoffs**:
-- Only one model per process: a later feature that wants a cheap model for classification and a strong one for writing needs keyed clients (a follow up, not built).
-- A vendor that is not OpenAI compatible (Anthropic's native API, Gemini's native API) needs a new `Kind` and its own adapter package.
-- Switching needs a restart; there is no hot reload of the active provider.
-- Provider quirks hide behind the same adapter: for example DeepSeek's JSON mode requires the word "json" in the prompt (the Planner's prompt already has it), and another provider may ignore `response_format`.
+- Only features every vendor exposes through its OpenAI compatible endpoint are reachable. Vendor only features (Gemini's native grounding, Anthropic, provider specific caching controls) would need a native adapter later.
+- Compatibility layers differ in small ways: JSON mode, `Retry-After`, and error bodies are not identical across Gemini, DeepSeek, and Ollama. The live verify is the real proof, and a provider may need a small per provider switch (e.g. turning off JSON mode) if one rejects it.
+- A failing provider can hold a planning job for about 3 × `TimeoutSeconds` before the run fails (AC-5); acceptable for background jobs, not for anything interactive.
+- Committing `Default → Fake` means a deployment with no AI env vars runs on the fake rather than refusing to start; the startup warning (AC-3) is the guard.
+- No persisted cost history: telemetry lasts only as long as the dashboard or exporter keeps it.
+- Switching a model means restarting the Api (no hot reload); acceptable for one user.
+- No failover: when the chosen provider is down, planning fails until you switch config yourself.
 
 **Neutral**:
-- No migration and no UI in this feature.
-- `FakeChatClient` stays, now as the `Fake` provider kind rather than a hardcoded registration.
-
-## Decisions made without the engineer (please review)
-
-- Abstraction: use `IChatClient` itself, no custom `IAiProvider` interface. Runner up: a WorkPilot `IAiProvider` wrapper. Why: `IChatClient` already is the vendor neutral contract the Planner depends on; a wrapper would duplicate it.
-- Adapter: one `OpenAICompatible` kind built with `Microsoft.Extensions.AI.OpenAI` (official OpenAI .NET SDK) and a configurable endpoint, serving both OpenAI and DeepSeek. Runner up: a separate kind and package per vendor. Why: DeepSeek exposes an OpenAI compatible Chat Completions API, so one maintained adapter covers both.
-- Selection: one active provider by `AI:ActiveProvider` over a named `AI:Providers` list. Runner up: keyed clients for every provider plus per call routing or the experimental failover client. Why: the done when needs only a config swap; routing is not needed yet and those MEAI types are experimental.
-- Validation scope: validate only the active provider. Runner up: validate every declared provider. Why: lets you keep both declared while holding only one key.
-- Development default: `Fake` active in `appsettings.Development.json` only; production has no default and fails fast. Runner up: `Fake` default everywhere with a warning. Why: keeps dev and tests keyless without letting production silently plan with a fake.
-- Secrets: user secrets (new `UserSecretsId` on the Api) or env vars. Runner up: an Aspire secret parameter in the AppHost. Why: works with and without the AppHost and avoids editing the AppHost other branches touch.
-- Provider failure: fail the run (new `PlannerUnavailableException`), no Hangfire retry. Runner up: let Hangfire retry the job. Why: the SDK already retries transient errors; a run stuck at `Planning` is worse than a clear `Failed`.
-- Timeout: per provider `TimeoutSeconds`, default 60. Runner up: the SDK default (100s). Why: a planning call longer than a minute is almost certainly stuck.
-- Default models: `gpt-4.1-mini` (OpenAI) and `deepseek-chat` (DeepSeek). Runner up: `gpt-4o-mini`. Why: cheap, JSON mode capable defaults; both are just config.
-- Live verification: two local fake OpenAI compatible servers, since no real key exists on this machine; the real key test is left for Ali.
+- `FakeChatClient` moves from "the default registration" to "a provider you choose on purpose".
+- A new middleware pattern (`DelegatingChatClient`, `ChatClientBuilder`) enters the codebase; future AI cross cutting concerns (caching, rate limiting) plug in the same way.
 
 ## Follow-up
 
-- [ ] Ali: run the live key check in `verify.md` (set a real `OpenAI` and/or `DeepSeek` key via user secrets, switch `AI:ActiveProvider`, trigger "list my profile").
-- [ ] Keyed clients per task (cheap vs strong model) when a second AI using feature needs a different model than the Planner.
-- [ ] A non OpenAI compatible `Kind` (e.g. Anthropic native) if ever wanted.
-- [ ] OpenTelemetry for AI calls (`UseOpenTelemetry()` plus adding its source in `ServiceDefaults`), with sensitive data off, once observability is wired for real.
-- [ ] Settings (scope item 30) may want to show the active provider and model read only; switching stays config only unless a spec says otherwise.
-- [ ] `AGENTS.md` could gain one line: AI provider is config only (`AI:ActiveProvider`, `AI:Providers:<Name>`), keys via user secrets or env vars.
+- [ ] If a provider rejects `response_format: json_object` during the live verify, add a `SupportsJsonMode` provider flag rather than dropping JSON mode for everyone.
+- [ ] Persist per call usage and cost (an `ai_calls` table) when the Dashboard (scope 13) or Settings (scope 30) needs a cost history.
+- [ ] Settings (scope 30) may later edit purpose mappings at runtime; that would need a config source other than appsettings and a client rebuild on change.
+- [ ] AC-9 (code fence tolerance) was added by the architect from known model behavior, not asked; confirm it in spec review.
+- [ ] The API wide error handling pattern is still undecided (`AGENTS.md`); `/health/ai` uses plain result objects until that decision lands.

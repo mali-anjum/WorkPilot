@@ -163,11 +163,11 @@ The shared machinery every domain agent runs on: Planner, Policy Engine, Tool Re
 `IAiProvider`-style interface so no domain logic hardcodes a single vendor. Must support at least two swappable providers per the spec (e.g. OpenAI-compatible and DeepSeek-compatible), routed through the AI Gateway pattern appropriate to the chosen stack.
 **Done when:** the same planning call can be swapped between two configured providers via configuration only, no code change.
 - [x] Design it (spec): `/architect AI provider abstraction` → [0006](../specs/0006-ai-provider-abstraction/index.md)
-- [x] Build it: `/develop AI provider abstraction`
-  - [x] Config selected `IChatClient` (OpenAI compatible and Fake kinds) replacing the hardcoded fake (AC-1, AC-2, AC-5)
-  - [x] Startup validation and the provider log line (AC-3, AC-4, AC-5)
-  - [x] Bounded calls; a provider failure fails the run (AC-6)
-  - [x] Keys via user secrets or env vars; prove the swap live against two OpenAI compatible endpoints (AC-1, AC-2, AC-4)
+- [ ] Build it: `/develop AI provider abstraction`
+  - [ ] Per purpose keyed clients through one OpenAI compatible adapter (OpenAI, Gemini, DeepSeek, Ollama) plus the explicit Fake provider, proven against a stub server (AC-1, AC-2, AC-3)
+  - [ ] Fail fast config validation and the Fake startup warning (AC-3, AC-4)
+  - [ ] Retries, timeouts, provider error translation, `PlanningFailed` audit, fenced JSON tolerance (AC-5, AC-6, AC-9)
+  - [ ] Telemetry with the sensitive data flag, and the `/health/ai` probe (AC-7, AC-8)
 - [ ] Verify it: `/check verify AI provider abstraction`
 - [ ] Test it: `/test AI provider abstraction`
 

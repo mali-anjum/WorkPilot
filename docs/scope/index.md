@@ -21,7 +21,7 @@ _These are recommendations to keep the build orderly, not requirements. Skip any
 | 4 | Design system & UI foundation | Foundation | done |
 | 5 | Auth & app shell | Foundation | done |
 | 6 | Agent orchestrator core | Foundation | done |
-| 7 | AI provider abstraction | Foundation | planned |
+| 7 | AI provider abstraction | Foundation | in-progress |
 | 8 | Approval engine & Approval center | Foundation | planned |
 | 9 | Job source ingestion & normalization | Slice 1: Job Agent core loop | planned |
 | 10 | Job deduplication | Slice 1: Job Agent core loop | planned |
