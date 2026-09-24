@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using WorkPilot.Infrastructure.Persistence;
@@ -15,28 +14,14 @@ namespace WorkPilot.Api.Tests;
 // from looking up, or on a first ever sign in creating, the Profile row whose
 // AuthUserId matches sub"). Needs a reachable Postgres; set
 // WORKPILOTDB_CONNECTION (see supabase/.env for the local stack's credentials).
-public class IdentityProfileEndpointTests
+// Shares SharedApiFactory (see its remarks) instead of building its own
+// WebApplicationFactory per test.
+[Collection("Api")]
+public class IdentityProfileEndpointTests(SharedApiFactory factory)
 {
-    private static WebApplicationFactory<Program> CreateFactory()
-    {
-        var connectionString = Environment.GetEnvironmentVariable("WORKPILOTDB_CONNECTION")
-            ?? throw new InvalidOperationException(
-                "Set WORKPILOTDB_CONNECTION to a reachable Postgres connection string before running these tests " +
-                "(see supabase/.env for the local self hosted Supabase stack's credentials).");
-
-        // Same env-var-before-host-build constraint as HealthDbEndpointTests:
-        // Program.cs reads the connection string before WebApplicationFactory's
-        // own configuration hook runs.
-        Environment.SetEnvironmentVariable("ConnectionStrings__workpilotdb", connectionString);
-        Environment.SetEnvironmentVariable("Hangfire__DisableServer", "true");
-
-        return new WebApplicationFactory<Program>();
-    }
-
     [Fact]
     public async Task ResolveProfile_OnFirstSignIn_CreatesAProfileRowLinkedToTheAuthUser()
     {
-        using var factory = CreateFactory();
         using var client = factory.CreateClient();
         var authUserId = Guid.NewGuid();
         var email = $"test-{authUserId:N}@example.com";
@@ -71,7 +56,6 @@ public class IdentityProfileEndpointTests
     [Fact]
     public async Task ResolveProfile_CalledTwiceForTheSameAuthUser_ReturnsTheSameProfileIdWithoutCreatingASecondRow()
     {
-        using var factory = CreateFactory();
         using var client = factory.CreateClient();
         var authUserId = Guid.NewGuid();
         var email = $"test-{authUserId:N}@example.com";

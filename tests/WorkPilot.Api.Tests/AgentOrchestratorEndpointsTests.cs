@@ -13,27 +13,17 @@ namespace WorkPilot.Api.Tests;
 // Integration tests for the Agent orchestrator core's internal endpoints
 // (spec 0005): POST /internal/agent/runs, GET /internal/agent/runs/{id}, and
 // POST /internal/agent/approvals/{id}/decide. Hangfire's own worker server is
-// disabled here (see CreateFactory), so these exercise the synchronous parts
-// of each endpoint directly rather than a full run to completion; the live
-// end to end pipeline (trigger -> Planning -> Executing -> Completed, and the
-// approval suspend/resume path) was proven manually against the real stack
-// during /develop (see the feature's scope entry). Needs a reachable
-// Postgres; set WORKPILOTDB_CONNECTION (see supabase/.env).
-public class AgentOrchestratorEndpointsTests
+// disabled here (see SharedApiFactory), so these exercise the synchronous
+// parts of each endpoint directly rather than a full run to completion; the
+// live end to end pipeline (trigger -> Planning -> Executing -> Completed,
+// and the approval suspend/resume path) was proven manually against the real
+// stack during /develop (see the feature's scope entry). Needs a reachable
+// Postgres; set WORKPILOTDB_CONNECTION (see supabase/.env). Shares
+// SharedApiFactory (see its remarks) instead of building its own
+// WebApplicationFactory per test.
+[Collection("Api")]
+public class AgentOrchestratorEndpointsTests(SharedApiFactory factory)
 {
-    private static WebApplicationFactory<Program> CreateFactory()
-    {
-        var connectionString = Environment.GetEnvironmentVariable("WORKPILOTDB_CONNECTION")
-            ?? throw new InvalidOperationException(
-                "Set WORKPILOTDB_CONNECTION to a reachable Postgres connection string before running these tests " +
-                "(see supabase/.env for the local self hosted Supabase stack's credentials).");
-
-        Environment.SetEnvironmentVariable("ConnectionStrings__workpilotdb", connectionString);
-        Environment.SetEnvironmentVariable("Hangfire__DisableServer", "true");
-
-        return new WebApplicationFactory<Program>();
-    }
-
     private static async Task<Guid> CreateProfileAsync(WebApplicationFactory<Program> factory)
     {
         using var scope = factory.Services.CreateScope();
@@ -47,7 +37,6 @@ public class AgentOrchestratorEndpointsTests
     [Fact]
     public async Task TriggerRun_WithAKnownProfile_CreatesAPlanningRunAndReturns202()
     {
-        using var factory = CreateFactory();
         using var client = factory.CreateClient();
         var profileId = await CreateProfileAsync(factory);
 
@@ -79,7 +68,6 @@ public class AgentOrchestratorEndpointsTests
     [Fact]
     public async Task TriggerRun_WithAnEmptyGoal_Returns400()
     {
-        using var factory = CreateFactory();
         using var client = factory.CreateClient();
         var profileId = await CreateProfileAsync(factory);
 
@@ -98,7 +86,6 @@ public class AgentOrchestratorEndpointsTests
     [Fact]
     public async Task TriggerRun_WithAnUnknownProfile_Returns404()
     {
-        using var factory = CreateFactory();
         using var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync("/internal/agent/runs", new { Goal = "list my profile", ProfileId = Guid.NewGuid() });
@@ -109,7 +96,6 @@ public class AgentOrchestratorEndpointsTests
     [Fact]
     public async Task GetRun_ForAnUnknownId_Returns404()
     {
-        using var factory = CreateFactory();
         using var client = factory.CreateClient();
 
         var response = await client.GetAsync($"/internal/agent/runs/{Guid.NewGuid()}");
@@ -120,7 +106,6 @@ public class AgentOrchestratorEndpointsTests
     [Fact]
     public async Task DecideApproval_Approve_ResumesTheStepAndRunSynchronously()
     {
-        using var factory = CreateFactory();
         using var client = factory.CreateClient();
         var profileId = await CreateProfileAsync(factory);
         var (runId, stepId, approvalId) = await SeedAwaitingApprovalRunAsync(factory, profileId);
@@ -151,7 +136,6 @@ public class AgentOrchestratorEndpointsTests
     [Fact]
     public async Task DecideApproval_Reject_FailsTheStepAndRun()
     {
-        using var factory = CreateFactory();
         using var client = factory.CreateClient();
         var profileId = await CreateProfileAsync(factory);
         var (runId, stepId, approvalId) = await SeedAwaitingApprovalRunAsync(factory, profileId);
@@ -180,7 +164,6 @@ public class AgentOrchestratorEndpointsTests
     [Fact]
     public async Task DecideApproval_DecidedTwice_ReturnsConflictOnTheSecondCall()
     {
-        using var factory = CreateFactory();
         using var client = factory.CreateClient();
         var profileId = await CreateProfileAsync(factory);
         var (_, _, approvalId) = await SeedAwaitingApprovalRunAsync(factory, profileId);
@@ -202,7 +185,6 @@ public class AgentOrchestratorEndpointsTests
     [Fact]
     public async Task DecideApproval_ForAnUnknownApproval_Returns404()
     {
-        using var factory = CreateFactory();
         using var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync(
