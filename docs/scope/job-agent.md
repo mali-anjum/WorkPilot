@@ -43,7 +43,10 @@ Scores a canonical Job against the user's Profile (skills, experience, education
 ### 14. Resume management
 Immutable resume versions once used in an application; base resume plus tailored/company-specific versions.
 **Done when:** a resume version used by a submitted application can never be silently edited, and version history is visible.
-- [ ] Design it (spec): `/architect resume management`
+- [x] Design it (spec): `/architect resume management` → [0009](../specs/0009-resume-management/index.md)
+- [ ] Build it: `/develop resume management`
+- [ ] Verify it: `/check verify resume management`
+- [ ] Test it: `/test resume management`
 
 ### 15. Cover letter generation
 Templates, AI-generated drafts (via the provider abstraction), versioning, linkage to the application that used them.
