@@ -1,7 +1,7 @@
 # 0008. Job source ingestion and normalization
 
 **Date**: 2026-09-24
-**Status**: Proposed
+**Status**: In Progress
 
 ## Summary
 

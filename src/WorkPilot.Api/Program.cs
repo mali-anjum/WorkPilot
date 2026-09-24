@@ -14,6 +14,7 @@ using WorkPilot.Infrastructure.Modules.Identity;
 using WorkPilot.Infrastructure.Persistence;
 using WorkPilot.Workers.Agent;
 using WorkPilot.Workers.Approvals;
+using WorkPilot.Workers.Jobs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -65,6 +66,7 @@ builder.Services.AddScoped<ITool, ApprovalRequiredDemoTool>();
 builder.Services.AddScoped<PlanRunJob>();
 builder.Services.AddScoped<AdvanceRunJob>();
 builder.Services.AddApprovalEngine(); // docs/specs/0007-approval-engine-center
+builder.Services.AddJobIngestion(builder.Configuration); // docs/specs/0008-job-source-ingestion
 
 // Hangfire, storage in the same Postgres database as EF Core (per spec:
 // "Background jobs / workflows | Hangfire, storage in the same Postgres
@@ -138,6 +140,7 @@ app.MapDefaultEndpoints(); // Aspire health/liveness endpoints from ServiceDefau
 // yet — this is a local scaffold; add authorization before any non-local
 // deployment.
 app.UseHangfireDashboard("/hangfire");
+app.MapJobEndpoints(); // docs/specs/0008-job-source-ingestion
 
 app.MapGet("/health/db", async (WorkPilotDbContext db) =>
 {
