@@ -10,6 +10,8 @@
     <PackageReference Include="Hangfire.PostgreSql" Version="1.21.1" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.12" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+    <!-- Typed HttpClient (and its resilience timeouts) for job sources (docs/specs/0008-job-source-ingestion). -->
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.8.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <!-- The official Supabase .NET client, used only to call GoTrue (self hosted auth

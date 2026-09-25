@@ -2,10 +2,21 @@
 
 The walking skeleton of the whole product: discover a real job, know why it matches, prepare a real application, get it approved, and know for certain whether it was actually submitted. Every feature here is a vertical slice (UI + logic + data + verification), not a layer.
 
-### 9. Job source ingestion & normalization · needs a decision
+### 9. Job source ingestion & normalization · done
 `IJobSource` interface; at least one real source wired end to end; raw job -> normalizer -> canonical Job + JobSnapshot with provenance (source URL, retrieved/verified timestamps).
 **Done when:** a real search against one live source produces canonical Job rows with provenance fields populated.
-- [ ] Design it (spec): `/architect job source ingestion & normalization`
+- [x] Design it (spec): `/architect job source ingestion & normalization` → [0008](../specs/0008-job-source-ingestion/index.md)
+- [x] Build it: `/develop job source ingestion & normalization`
+  - [x] Domain normalizer + `Job.Create`/`Refresh` snapshot and provenance rules (AC-2, AC-3, AC-4)
+  - [x] Migration `AddJobIngestion` + `IJobSource`, `JobIngestionService`, repository (AC-2, AC-4, AC-5, AC-6, AC-8)
+  - [x] `GreenhouseJobSource` (public Greenhouse Job Board API) + `IngestJobsJob` Hangfire job (AC-2, AC-6)
+  - [x] `POST /internal/jobs/ingestions` trigger + `GET /internal/jobs` read endpoint (AC-1, AC-7)
+- [x] Verify it: `/check verify job source ingestion & normalization`
+- [x] Test it: `/test job source ingestion & normalization`
+
+`/check verify` (2026-09-24): PASS; see [verify.md](../specs/0008-job-source-ingestion/verify.md). Driven live against the Api (Hangfire worker on) and the real Greenhouse board API: `gitlab` with keyword `engineer` fetched 206 postings and stored 103 canonical jobs, each with one snapshot and `SourceUrl`/`RetrievedAt`/`VerifiedAt`/`Confidence` populated; a re-run changed nothing but `VerifiedAt`; a changed hash produced exactly one update and a second snapshot; an unknown board failed after Hangfire's 2 retries with nothing stored; `stripe` stored 61 more. One fix during verify: the Greenhouse client now has its own resilience pipeline, since the default 10 s per attempt timeout was too tight for a 3 MB board.
+
+`/test` (2026-09-24): 53 new tests, all passing (Domain 72/72, Api 59/59, Web 68/68). `tests/WorkPilot.Domain.Tests/JobIngestionTests.cs` (25, unit): normalizer whitespace, HTML and entity encoded HTML, remote detection, stable hash, keyword search, `Job.Create`/`Refresh` provenance and snapshot rules. `tests/WorkPilot.Api.Tests/JobIngestionTests.cs` (13, real Postgres, scripted `IJobSource`): stored jobs and audit row, keyword filter and skips, idempotent re-run and snapshot on change, source failure stores nothing, trigger 400s and find or create, read endpoint and 404. `tests/WorkPilot.Api.Tests/GreenhouseJobSourceTests.cs` (15): field mapping on a captured payload, fallbacks, malformed bodies, token validation, request URL, 404. Follow ups: recurring schedule, stale job closing, a second source, salary extraction (see the spec).
 
 ### 10. Job deduplication
 Same job from multiple sources collapses to one canonical Job with multiple source links, never duplicate applications.

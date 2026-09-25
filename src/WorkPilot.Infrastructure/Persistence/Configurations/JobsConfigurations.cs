@@ -11,7 +11,11 @@ public class JobSourceConfiguration : IEntityTypeConfiguration<JobSource>
         builder.ToTable("job_sources");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Name).HasMaxLength(200).IsRequired();
+        builder.Property(e => e.Type).HasMaxLength(50).IsRequired();
         builder.Property(e => e.Config).HasColumnType("jsonb");
+
+        // One row per board per source type, found or created by the ingestion trigger (spec 0008).
+        builder.HasIndex(e => new { e.Type, e.Name }).IsUnique();
     }
 }
 
@@ -40,6 +44,12 @@ public class JobSnapshotConfiguration : IEntityTypeConfiguration<JobSnapshot>
         builder.HasIndex(e => e.ContentHash);
         builder.Property(e => e.RawContent).IsRequired();
         builder.Property(e => e.ContentHash).HasMaxLength(128).IsRequired();
+
+        // Each snapshot carries its own source link, so one canonical job can
+        // gather snapshots from several sources (spec 0008, for feature 10).
+        builder.Property(e => e.ExternalId).HasMaxLength(200).IsRequired();
+        builder.HasOne<JobSource>().WithMany().HasForeignKey(e => e.JobSourceId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(e => new { e.JobSourceId, e.ExternalId });
 
         builder.OwnsOne(e => e.Provenance, ProvenanceConfigurations.Configure);
     }
