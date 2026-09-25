@@ -48,7 +48,7 @@ Immutable resume versions once used in an application; base resume plus tailored
   - [x] Domain draft/lock/version rules, `AddResumeManagement` migration with the locked row trigger, Postgres file store (AC-2 to AC-6, AC-8, AC-10)
   - [x] `IResumeService` + `/internal/resumes` endpoints, profile scoped (AC-1, AC-3, AC-7, AC-9)
   - [x] `/resumes` and `/resumes/{id}` pages, file download proxy, nav item (AC-1, AC-6, AC-7)
-- [ ] Verify it: `/check verify resume management`
+- [x] Verify it: `/check verify resume management`
 - [ ] Test it: `/test resume management`
 
 ### 15. Cover letter generation
