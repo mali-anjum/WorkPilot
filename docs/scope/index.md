@@ -28,7 +28,7 @@ _These are recommendations to keep the build orderly, not requirements. Skip any
 | 11 | Job matching engine & scoring | Slice 1: Job Agent core loop | planned |
 | 12 | Jobs list & job detail | Slice 1: Job Agent core loop | planned |
 | 13 | Dashboard overview | Slice 1: Job Agent core loop | planned |
-| 14 | Resume management | Slice 1: Job Agent core loop | planned |
+| 14 | Resume management | Slice 1: Job Agent core loop | done |
 | 15 | Cover letter generation | Slice 1: Job Agent core loop | planned |
 | 16 | Application preparation flow | Slice 1: Job Agent core loop | planned |
 | 17 | Application pipeline & tracking | Slice 1: Job Agent core loop | planned |

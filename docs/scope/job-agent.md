@@ -40,7 +40,7 @@ Scores a canonical Job against the user's Profile (skills, experience, education
 **Done when:** the dashboard reflects real application pipeline counts and at least one live "today's priorities" item sourced from real state.
 - [ ] Design it (spec): `/develop dashboard overview`
 
-### 14. Resume management · in-progress
+### 14. Resume management · done
 Immutable resume versions once used in an application; base resume plus tailored/company-specific versions.
 **Done when:** a resume version used by a submitted application can never be silently edited, and version history is visible.
 - [x] Design it (spec): `/architect resume management` → [0009](../specs/0009-resume-management/index.md)
@@ -50,6 +50,8 @@ Immutable resume versions once used in an application; base resume plus tailored
   - [x] `/resumes` and `/resumes/{id}` pages, file download proxy, nav item (AC-1, AC-6, AC-7)
 - [x] Verify it: `/check verify resume management`
 - [x] Test it: `/test resume management`
+- [x] Review it (fresh model): `/check review` → [review](../reviews/2026-09-26-feat-resume-management.md)
+- [x] Document it: `/document pr`
 
 ### 15. Cover letter generation
 Templates, AI-generated drafts (via the provider abstraction), versioning, linkage to the application that used them.

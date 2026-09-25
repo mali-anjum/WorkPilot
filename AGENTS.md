@@ -5,7 +5,7 @@ Personal AI work execution system (finds and matches jobs/academic opportunities
 ## Stack
 
 - **Language / Runtime**: C# / .NET 10
-- **Framework**: .NET Aspire (orchestration) + Blazor Web App (Auto render mode) + ASP.NET Core backend
+- **Framework**: .NET Aspire (orchestration) + Blazor Web App (InteractiveServer render mode, app wide; docs/specs/0016-blazor-server-render-mode) + ASP.NET Core backend
 - **Key dependencies**: EF Core (Npgsql), Hangfire (background jobs), Microsoft.Extensions.AI (`IChatClient`), Playwright for .NET
 - **Database**: PostgreSQL, self hosted via Supabase (Postgres + GoTrue auth + Storage, Docker Compose); EF Core owns only the product schema, never `auth.*`/`storage.*`
 - **Package manager**: NuGet (`dotnet` CLI)
@@ -54,6 +54,8 @@ Architecture: Clean Architecture. Layers: `Domain` (entities, value objects) →
 - AI: each purpose (`Default`, `Planner`, ...) picks a provider and model in the `Ai` section of `src/WorkPilot.Api/appsettings.json`; switching is config only (`Ai__Purposes__<purpose>__Provider`/`__Model`). The committed default is the `Fake` provider, so no key is needed to build or test. Keys never go in a tracked file: `dotnet user-secrets set "Ai:Providers:<name>:ApiKey" <key> --project src/WorkPilot.Api` in dev, `Ai__Providers__<name>__ApiKey` env vars in prod. `GET /health/ai` checks the Default provider on demand (docs/specs/0006-ai-provider-abstraction).
 - Jobs: every external job source plugs in behind `IJobSource` (Application), one adapter per source in `Infrastructure/Modules/Jobs/Sources/`; nothing outside the adapter knows the source (docs/specs/0008-job-source-ingestion).
 - Outbound HTTP: the ServiceDefaults standard resilience handler (10 s per attempt) ignores options named per client; a typed client that needs other timeouts must replace that pipeline for itself (see `JobIngestionServiceCollectionExtensions`).
+- Blazor: every routed page lives in `WorkPilot.Web` and renders InteractiveServer (set once on `<Routes>` in `App.razor`), so pages may inject server services; a component that calls JS interop in `DisposeAsync` must catch `JSDisconnectedException`, since every full page load closes a circuit.
+- Resumes: a version an application used is locked forever, backed by the `resume_versions_block_locked_changes` Postgres trigger (SQLSTATE `WP409`); keep that hand written SQL if `AddResumeManagement` is ever regenerated. Files go through `IResumeFileStore` (Postgres backed until Supabase Storage runs) (docs/specs/0009-resume-management).
 - Format with `dotnet format` + `.editorconfig`; a `.githooks/pre-commit` hook runs `dotnet format` on staged `.cs` files before commit (format only, not a full lint/typecheck gate yet). One time per clone: `git config core.hooksPath .githooks`.
 - Testing gate: unit + integration tests with xUnit (`WebApplicationFactory` for integration tests against a real Postgres, never a mock of the database).
 - No CI configured yet.
