@@ -82,7 +82,8 @@ public sealed class AdvanceRunJob(
                 // whatever path led to this job.
                 if (!ApprovalPolicy.PermitsExecution(tool.RiskTier, approval))
                 {
-                    await RefuseAtGateAsync(run, next, tool, approval);
+                    // Never ran, so the step is skipped.
+                    await RefuseAtGateAsync(run, next, tool, approval, AgentStepStatus.Skipped);
                     return;
                 }
 
@@ -102,12 +103,16 @@ public sealed class AdvanceRunJob(
                 // Defense in depth (spec 0007, AC-2): a gated step only ever
                 // reaches Running through the gate above, so a policy miss
                 // here means its approval no longer satisfies the policy;
-                // never re-execute it.
-                if (ApprovalPolicy.RequiresDecision(tool.RiskTier) &&
-                    !ApprovalPolicy.PermitsExecution(tool.RiskTier, await FindApprovalAsync(next)))
+                // never re-execute it. It may have partly run before the
+                // crash, so the step fails (not skipped), audited the same way.
+                if (ApprovalPolicy.RequiresDecision(tool.RiskTier))
                 {
-                    await FailStepAndRunAsync(run, next);
-                    return;
+                    var runningApproval = await FindApprovalAsync(next);
+                    if (!ApprovalPolicy.PermitsExecution(tool.RiskTier, runningApproval))
+                    {
+                        await RefuseAtGateAsync(run, next, tool, runningApproval, AgentStepStatus.Failed);
+                        return;
+                    }
                 }
 
                 break; // idempotent: safe to execute again
@@ -193,20 +198,21 @@ public sealed class AdvanceRunJob(
             .OrderByDescending(a => a.RequestedAt)
             .FirstOrDefaultAsync();
 
-    // An approved step whose approval no longer satisfies the policy (spec
-    // 0007, AC-2): never executed, the step is skipped and the run fails,
-    // and the refusal is audited.
-    private async Task RefuseAtGateAsync(AgentRun run, AgentStep step, ITool tool, Approval approval)
+    // A gated step whose approval (if any) no longer satisfies the policy
+    // (spec 0007, AC-2): never executed now, the step ends in
+    // stepOutcome (Skipped when it never ran, Failed when it was already
+    // Running), the run fails, and the refusal is audited either way.
+    private async Task RefuseAtGateAsync(AgentRun run, AgentStep step, ITool tool, Approval? approval, AgentStepStatus stepOutcome)
     {
-        step.TransitionTo(AgentStepStatus.Skipped);
+        step.TransitionTo(stepOutcome);
         run.TransitionTo(AgentRunStatus.Failed);
         var payload = JsonSerializer.Serialize(
             new
             {
-                approvalId = approval.Id,
+                approvalId = approval?.Id,
                 toolRiskTier = tool.RiskTier.ToString(),
-                approvalRiskTier = approval.RiskTier,
-                approval.ExplicitlyConfirmed,
+                approvalRiskTier = approval?.RiskTier,
+                explicitlyConfirmed = approval?.ExplicitlyConfirmed ?? false,
             },
             JsonSerializerOptions.Web);
         audit.Record("Agent", "ApprovalGateRefused", ApprovalTargets.AgentStep, step.Id, payload);

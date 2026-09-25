@@ -196,6 +196,23 @@ public sealed class ApprovalCenterEndpointsTests : IAsyncLifetime
         Assert.Empty(_client.Calls);
     }
 
+    [Theory]
+    [InlineData("none")] // signed in, but no profile_id claim
+    [InlineData("not-a-guid")]
+    [InlineData("00000000-0000-0000-0000-000000000000")]
+    public async Task A_session_without_a_valid_profile_is_forbidden_and_decides_nothing(string profileClaim)
+    {
+        using var client = _app.GetTestClient();
+        client.DefaultRequestHeaders.Add(HeaderAuthHandler.Header, "01a0d8e8-0000-7000-8000-000000000001");
+        client.DefaultRequestHeaders.Add(HeaderAuthHandler.ProfileHeader, profileClaim);
+        var (token, cookie) = await GetTokenAsync(client);
+
+        var response = await PostDecisionAsync(client, new() { ["decision"] = "Approve", ["__RequestVerificationToken"] = token }, cookie);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Empty(_client.Calls);
+    }
+
     private sealed record Call(Guid ApprovalId, string Decision, Guid DecidedBy, string? Confirmation);
 
     private sealed class RecordingClient : IApprovalCenterClient
@@ -221,6 +238,10 @@ public sealed class ApprovalCenterEndpointsTests : IAsyncLifetime
         public const string Scheme = "TestSession";
         public const string Header = "X-Test-Profile";
 
+        // Overrides the profile_id claim ("none" means no claim at all), to
+        // model a signed in session whose profile is missing or malformed.
+        public const string ProfileHeader = "X-Test-Profile-Claim";
+
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
             if (!Request.Headers.TryGetValue(Header, out var value))
@@ -228,9 +249,14 @@ public sealed class ApprovalCenterEndpointsTests : IAsyncLifetime
                 return Task.FromResult(AuthenticateResult.NoResult());
             }
 
-            var identity = new ClaimsIdentity(
-                [new Claim(ClaimTypes.NameIdentifier, value.ToString()), new Claim(PersistedAuthState.ProfileIdClaimType, value.ToString())],
-                Scheme);
+            var profileClaim = Request.Headers.TryGetValue(ProfileHeader, out var overridden) ? overridden.ToString() : value.ToString();
+            List<Claim> claims = [new Claim(ClaimTypes.NameIdentifier, value.ToString())];
+            if (profileClaim != "none")
+            {
+                claims.Add(new Claim(PersistedAuthState.ProfileIdClaimType, profileClaim));
+            }
+
+            var identity = new ClaimsIdentity(claims, Scheme);
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme)));
         }
     }

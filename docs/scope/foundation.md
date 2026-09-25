@@ -187,5 +187,5 @@ Enforces the three tier policy: auto allowed (read/search/analyze/classify/dedup
   - [x] `/approvals` Approval center page + antiforgery protected decide form in Web (AC-5, AC-6)
 - [x] Verify it: `/check verify approval engine & approval center`
 - [x] Test it: `/test approval engine & approval center`
-- [ ] Review it (fresh model): `/check review approval engine & approval center`
-- [ ] Document it: `/document approval engine & approval center`
+- [x] Review it (fresh model): `/check review approval engine & approval center`
+- [x] Document it: `/document approval engine & approval center`

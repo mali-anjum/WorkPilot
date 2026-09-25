@@ -437,8 +437,51 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
 
             await using var verifyDb = CreateDbContext();
             Assert.Equal(0, tool.AttemptCount);
+            // Failed, not Skipped: a Running step may have partly run before the crash.
             Assert.Equal(AgentStepStatus.Failed, (await verifyDb.AgentSteps.SingleAsync(s => s.Id == step.Id)).Status);
             Assert.Equal(AgentRunStatus.Failed, (await verifyDb.AgentRuns.SingleAsync(r => r.Id == run.Id)).Status);
+
+            // Audited as a gate refusal, so it never looks like an ordinary crash.
+            var refused = await verifyDb.AuditLogs.SingleAsync(a => a.TargetId == step.Id && a.Action == "ApprovalGateRefused");
+            Assert.Equal("Agent", refused.Actor);
+            using var payload = JsonDocument.Parse(refused.Payload!);
+            Assert.Equal(JsonValueKind.Null, payload.RootElement.GetProperty("approvalId").ValueKind); // no approval row at all
+            Assert.Equal("ApprovalRequired", payload.RootElement.GetProperty("toolRiskTier").GetString());
+        }
+        finally
+        {
+            await CleanupAsync(profileId);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenARunningStepsToolBecameExplicitAfterApproval_RefusesAtTheGateWithTheApprovalInTheAudit()
+    {
+        // covers spec 0007 AC-2 on the Running re-entry path: approved at the
+        // ApprovalRequired tier, then the tool was redeployed as explicit tier
+        // before the crashed job came back
+        var tool = new ScriptedTool("became_destructive", isIdempotent: true, maxRetries: 0, ScriptedTool.Behavior.AlwaysSucceed, riskTier: ToolRiskTier.ExplicitConfirmation);
+        var (db, job) = CreateJob(tool);
+        var (run, step, profileId) = await SeedAwaitingApprovalRunAsync(db, tool.Name, approved: true);
+        step.TransitionTo(AgentStepStatus.Running);
+        await db.SaveChangesAsync();
+
+        try
+        {
+            await job.RunAsync(run.Id);
+
+            await using var verifyDb = CreateDbContext();
+            Assert.Equal(0, tool.AttemptCount);
+            Assert.Equal(AgentStepStatus.Failed, (await verifyDb.AgentSteps.SingleAsync(s => s.Id == step.Id)).Status);
+            Assert.Equal(AgentRunStatus.Failed, (await verifyDb.AgentRuns.SingleAsync(r => r.Id == run.Id)).Status);
+
+            var approval = await verifyDb.Approvals.SingleAsync(a => a.TargetId == step.Id);
+            var refused = await verifyDb.AuditLogs.SingleAsync(a => a.TargetId == step.Id && a.Action == "ApprovalGateRefused");
+            using var payload = JsonDocument.Parse(refused.Payload!);
+            Assert.Equal(approval.Id, payload.RootElement.GetProperty("approvalId").GetGuid());
+            Assert.Equal("ExplicitConfirmation", payload.RootElement.GetProperty("toolRiskTier").GetString());
+            Assert.Equal("ApprovalRequired", payload.RootElement.GetProperty("approvalRiskTier").GetString());
+            Assert.False(payload.RootElement.GetProperty("explicitlyConfirmed").GetBoolean());
         }
         finally
         {
