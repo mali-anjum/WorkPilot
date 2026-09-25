@@ -177,7 +177,7 @@ Code in `src/WorkPilot.AI/Providers/`, `src/WorkPilot.AI/Agent/ChatClientPlanner
 
 `/check verify` (2026-09-25): every non billing step passed live (routing, startup validation, wrong key redaction, timeouts, `/health` spends no tokens, the sensitive data flag); Gemini passed end to end with token telemetry. The OpenAI, DeepSeek, and Ollama success paths stay unproven live (no credit, not installed); the engineer accepted that and marked the feature done. `/test` then `/check review` follow ups: 196/196 (streaming error path, one line code fences, non retried 4xx, Gemini error shapes, startup report), and `supabase/.env.example` documents the AI key env vars.
 
-### 8. Approval engine & Approval center · GA · in-progress
+### 8. Approval engine & Approval center · GA · done
 Enforces the three tier policy: auto allowed (read/search/analyze/classify/dedupe/generate/prepare/monitor/detect/suggest), approval required (send email, submit application, withdraw application, connect external account), explicit confirmation (delete data, security/permission changes, destructive ops). The Approval center screen (`/approvals`) shows pending actions with enough evidence to decide (resume/cover letter versions, risk, target) and Approve/Reject.
 **Done when:** a tool marked "approval required" cannot execute without a recorded, user-issued approval; the Approval center lists it with full context and the decision is auditable.
 - [x] Design it (spec): `/architect approval engine & approval center` → [0007](../specs/0007-approval-engine-center/index.md)
