@@ -21,3 +21,8 @@ _Steps derived from spec 0007 acceptance criteria. `/check verify` runs these; `
 
 ## Acceptance-criteria coverage
 - AC-1 … live tier runs · AC-2 … live gate tamper step · AC-3 … schema + evidence snapshot steps · AC-4 … listing step · AC-5 … page steps · AC-6 … form post steps · AC-7 … non owner `403` (the Web host can't produce it, since it always sends the session's profile) · AC-8 … phrase steps · AC-9 … double decide and live race steps · AC-10 … audit steps
+
+## Automated (`/test`, 2026-09-25)
+- [x] `dotnet test WorkPilot.slnx` (with `WORKPILOTDB_CONNECTION` set) → Domain 85/85, Web 112/112, Api 106/106; `dotnet format --verify-no-changes` clean
+- Domain `ApprovalPolicyTests` → AC-1, AC-2, AC-8 · Api `ApprovalEndpointsTests` → AC-4, AC-7, AC-8, AC-9 (a real held row lock on the run), AC-10 · Api `AdvanceRunJobTests` (spec 0007 cases) → AC-1, AC-2, AC-3, AC-10 · Web `ApprovalsTests`, `ApprovalCenterEndpointsTests`, `ApprovalCenterClientTests` → AC-5, AC-6
+- Not automated: the signed out case goes through a test auth scheme (`401`), not the real cookie scheme's `/login` redirect, which only the live step above proves

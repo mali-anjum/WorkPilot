@@ -186,6 +186,6 @@ Enforces the three tier policy: auto allowed (read/search/analyze/classify/dedup
   - [x] Decide use case (owner check, typed confirmation, one guarded transaction) and `GET /internal/approvals` (AC-4, AC-7, AC-8, AC-9, AC-10)
   - [x] `/approvals` Approval center page + antiforgery protected decide form in Web (AC-5, AC-6)
 - [x] Verify it: `/check verify approval engine & approval center`
-- [ ] Test it: `/test approval engine & approval center`
+- [x] Test it: `/test approval engine & approval center`
 - [ ] Review it (fresh model): `/check review approval engine & approval center`
 - [ ] Document it: `/document approval engine & approval center`

@@ -269,6 +269,183 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
         }
     }
 
+    [Theory]
+    [InlineData(ToolRiskTier.ApprovalRequired)]
+    [InlineData(ToolRiskTier.ExplicitConfirmation)]
+    public async Task RunAsync_WhenAGatedToolIsNext_SuspendsWithAPendingApprovalAndTheEvidenceSnapshot(ToolRiskTier tier)
+    {
+        // covers spec 0007 AC-1, AC-3, AC-10
+        var documentVersionId = Guid.NewGuid();
+        var createdAt = new DateTimeOffset(2026, 9, 1, 8, 30, 0, TimeSpan.Zero);
+        var tool = new DescribingTool("gated_with_evidence", tier, context => new ApprovalEvidence(
+            "Sends your application",
+            new ApprovalTarget("Profile", context.ProfileId, "Test Founder"),
+            [new DocumentVersionEvidence("Resume", documentVersionId, "Main CV", 3, createdAt)]));
+        var (db, job) = CreateJob(tool);
+        var (run, step, profileId) = await SeedPendingRunAsync(db, tool.Name);
+        var before = DateTimeOffset.UtcNow.AddSeconds(-5);
+
+        try
+        {
+            await job.RunAsync(run.Id);
+
+            await using var verifyDb = CreateDbContext();
+            Assert.Equal(AgentStepStatus.AwaitingApproval, (await verifyDb.AgentSteps.SingleAsync(s => s.Id == step.Id)).Status);
+            Assert.Equal(AgentRunStatus.AwaitingApproval, (await verifyDb.AgentRuns.SingleAsync(r => r.Id == run.Id)).Status);
+            Assert.Equal(0, tool.AttemptCount);
+            Assert.Equal(0, await verifyDb.ToolCalls.CountAsync(t => t.AgentStepId == step.Id));
+
+            var approval = await verifyDb.Approvals.SingleAsync(a => a.TargetId == step.Id);
+            Assert.Equal(ApprovalStatus.Pending, approval.Status);
+            Assert.Equal(tier.ToString(), approval.RiskTier);
+            Assert.True(approval.RequestedAt >= before);
+            Assert.False(approval.ExplicitlyConfirmed);
+
+            var evidence = JsonSerializer.Deserialize<ApprovalEvidence>(approval.EvidenceJson!, JsonSerializerOptions.Web)!;
+            Assert.Equal("Sends your application", evidence.Summary);
+            Assert.Equal(new ApprovalTarget("Profile", profileId, "Test Founder"), evidence.Target);
+            var document = Assert.Single(evidence.Documents);
+            Assert.Equal(documentVersionId, document.VersionId);
+            Assert.Equal(3, document.VersionNumber);
+
+            var requested = await verifyDb.AuditLogs.SingleAsync(a => a.TargetId == step.Id && a.Action == "ApprovalRequested");
+            Assert.Equal("Agent", requested.Actor);
+            using var payload = JsonDocument.Parse(requested.Payload!);
+            Assert.Equal("Sends your application", payload.RootElement.GetProperty("summary").GetString());
+        }
+        finally
+        {
+            await CleanupAsync(profileId);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnAutoAllowedToolIsNext_ExecutesWithNoApprovalRow()
+    {
+        // covers spec 0007 AC-1
+        var tool = new ScriptedTool("auto", isIdempotent: true, maxRetries: 0, ScriptedTool.Behavior.AlwaysSucceed);
+        var (db, job) = CreateJob(tool);
+        var (run, step, profileId) = await SeedPendingRunAsync(db, tool.Name);
+
+        try
+        {
+            await job.RunAsync(run.Id);
+
+            await using var verifyDb = CreateDbContext();
+            Assert.Equal(AgentStepStatus.Succeeded, (await verifyDb.AgentSteps.SingleAsync(s => s.Id == step.Id)).Status);
+            Assert.Equal(1, tool.AttemptCount);
+            Assert.False(await verifyDb.Approvals.AnyAsync(a => a.TargetId == step.Id));
+        }
+        finally
+        {
+            await CleanupAsync(profileId);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAGatedToolDescribesNoEvidence_StillSuspendsWithANullSnapshot()
+    {
+        // covers spec 0007 AC-3: IApprovalEvidenceProvider is optional
+        var tool = new ScriptedTool("gated_plain", isIdempotent: false, maxRetries: 0, ScriptedTool.Behavior.AlwaysSucceed, riskTier: ToolRiskTier.ApprovalRequired);
+        var (db, job) = CreateJob(tool);
+        var (run, step, profileId) = await SeedPendingRunAsync(db, tool.Name);
+
+        try
+        {
+            await job.RunAsync(run.Id);
+
+            await using var verifyDb = CreateDbContext();
+            var approval = await verifyDb.Approvals.SingleAsync(a => a.TargetId == step.Id);
+            Assert.Equal(ApprovalStatus.Pending, approval.Status);
+            Assert.Null(approval.EvidenceJson);
+            Assert.Equal(0, tool.AttemptCount);
+        }
+        finally
+        {
+            await CleanupAsync(profileId);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenDescribingTheEvidenceThrows_StillSuspendsWithTheErrorAsTheSummary()
+    {
+        // covers spec 0007 AC-3: evidence is a courtesy, never a reason not to suspend
+        var tool = new DescribingTool("gated_broken_evidence", ToolRiskTier.ApprovalRequired, _ => throw new InvalidOperationException("resume store offline"));
+        var (db, job) = CreateJob(tool);
+        var (run, step, profileId) = await SeedPendingRunAsync(db, tool.Name);
+
+        try
+        {
+            await job.RunAsync(run.Id);
+
+            await using var verifyDb = CreateDbContext();
+            Assert.Equal(AgentRunStatus.AwaitingApproval, (await verifyDb.AgentRuns.SingleAsync(r => r.Id == run.Id)).Status);
+            var approval = await verifyDb.Approvals.SingleAsync(a => a.TargetId == step.Id);
+            var evidence = JsonSerializer.Deserialize<ApprovalEvidence>(approval.EvidenceJson!, JsonSerializerOptions.Web)!;
+            Assert.Contains("resume store offline", evidence.Summary);
+            Assert.Null(evidence.Target);
+            Assert.Empty(evidence.Documents);
+        }
+        finally
+        {
+            await CleanupAsync(profileId);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnExplicitToolsApprovalWasNotConfirmed_RefusesAtTheGateAndNeverExecutes()
+    {
+        // covers spec 0007 AC-2: the approval was recorded at the ApprovalRequired
+        // tier and approved without a confirmation, but the tool is explicit tier
+        var tool = new ScriptedTool("destructive", isIdempotent: false, maxRetries: 0, ScriptedTool.Behavior.AlwaysSucceed, riskTier: ToolRiskTier.ExplicitConfirmation);
+        var (db, job) = CreateJob(tool);
+        var (run, step, profileId) = await SeedAwaitingApprovalRunAsync(db, tool.Name, approved: true);
+
+        try
+        {
+            await job.RunAsync(run.Id);
+
+            await using var verifyDb = CreateDbContext();
+            Assert.Equal(0, tool.AttemptCount);
+            Assert.Equal(0, await verifyDb.ToolCalls.CountAsync(t => t.AgentStepId == step.Id));
+            Assert.Equal(AgentStepStatus.Skipped, (await verifyDb.AgentSteps.SingleAsync(s => s.Id == step.Id)).Status);
+            Assert.Equal(AgentRunStatus.Failed, (await verifyDb.AgentRuns.SingleAsync(r => r.Id == run.Id)).Status);
+
+            var refused = await verifyDb.AuditLogs.SingleAsync(a => a.TargetId == step.Id && a.Action == "ApprovalGateRefused");
+            Assert.Equal("Agent", refused.Actor);
+            using var payload = JsonDocument.Parse(refused.Payload!);
+            Assert.Equal("ExplicitConfirmation", payload.RootElement.GetProperty("toolRiskTier").GetString());
+            Assert.False(payload.RootElement.GetProperty("explicitlyConfirmed").GetBoolean());
+        }
+        finally
+        {
+            await CleanupAsync(profileId);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAnIdempotentGatedStepIsRunningWithoutAPermittingApproval_FailsInsteadOfReexecuting()
+    {
+        // covers spec 0007 AC-2: the gate also holds on the Running re-entry path
+        var tool = new ScriptedTool("gated_idempotent", isIdempotent: true, maxRetries: 0, ScriptedTool.Behavior.AlwaysSucceed, riskTier: ToolRiskTier.ApprovalRequired);
+        var (db, job) = CreateJob(tool);
+        var (run, step, profileId) = await SeedRunningRunAsync(db, tool.Name); // no Approval row at all
+
+        try
+        {
+            await job.RunAsync(run.Id);
+
+            await using var verifyDb = CreateDbContext();
+            Assert.Equal(0, tool.AttemptCount);
+            Assert.Equal(AgentStepStatus.Failed, (await verifyDb.AgentSteps.SingleAsync(s => s.Id == step.Id)).Status);
+            Assert.Equal(AgentRunStatus.Failed, (await verifyDb.AgentRuns.SingleAsync(r => r.Id == run.Id)).Status);
+        }
+        finally
+        {
+            await CleanupAsync(profileId);
+        }
+    }
+
     private (WorkPilotDbContext Db, AdvanceRunJob Job) CreateJob(params ITool[] tools)
     {
         var db = CreateDbContext();
@@ -352,6 +529,32 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
         await db.Profiles.Where(p => p.Id == profileId).ExecuteDeleteAsync();
     }
 
+    // A gated ITool double that also describes its approval evidence (spec
+    // 0007, AC-3); counts executions so a test can prove it never ran.
+    private sealed class DescribingTool(string name, ToolRiskTier riskTier, Func<ToolExecutionContext, ApprovalEvidence> describe)
+        : ITool, IApprovalEvidenceProvider
+    {
+        public string Name { get; } = name;
+        public string Description => "test tool with evidence";
+        public IReadOnlyList<string> RequiredArguments => [];
+        public IReadOnlyList<string> ExpectedOutputFields => [];
+        public ToolRiskTier RiskTier { get; } = riskTier;
+        public bool IsIdempotent => false;
+        public TimeSpan Timeout => TimeSpan.FromSeconds(5);
+        public int MaxRetries => 0;
+        public string? TargetType => null;
+        public int AttemptCount { get; private set; }
+
+        public Task<ApprovalEvidence> DescribeForApprovalAsync(ToolExecutionContext context, CancellationToken cancellationToken) =>
+            Task.FromResult(describe(context));
+
+        public Task<ToolExecutionResult> ExecuteAsync(ToolExecutionContext context, CancellationToken cancellationToken)
+        {
+            AttemptCount++;
+            return Task.FromResult(ToolExecutionResult.Ok(null));
+        }
+    }
+
     // A controllable ITool double: scripted to always succeed or always fail,
     // with configurable idempotency/retry, and a count of real invocations so
     // a test can assert a non-idempotent step was never called twice.
@@ -361,7 +564,8 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
         int maxRetries,
         ScriptedTool.Behavior behavior,
         string? outputJson = null,
-        string failureMessage = "scripted failure") : ITool
+        string failureMessage = "scripted failure",
+        ToolRiskTier riskTier = ToolRiskTier.AutoAllowed) : ITool
     {
         public enum Behavior { AlwaysSucceed, AlwaysFail }
 
@@ -369,7 +573,7 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
         public string Description => "test tool";
         public IReadOnlyList<string> RequiredArguments => [];
         public IReadOnlyList<string> ExpectedOutputFields => [];
-        public ToolRiskTier RiskTier => ToolRiskTier.AutoAllowed;
+        public ToolRiskTier RiskTier { get; } = riskTier;
         public bool IsIdempotent { get; } = isIdempotent;
         public TimeSpan Timeout => TimeSpan.FromSeconds(5);
         public int MaxRetries { get; } = maxRetries;
