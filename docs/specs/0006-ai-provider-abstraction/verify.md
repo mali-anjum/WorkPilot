@@ -19,7 +19,7 @@ Start the Api against a test database, e.g. `WORKPILOTDB_CONNECTION` pointed at 
 - [x] `/health` and `/alive` → `200` with no call reaching any provider (check provider dashboards or the Ollama log) → AC-8
 - [x] `Ai__LogSensitiveData=true` with the log level at Trace for `Microsoft.Extensions.AI` → prompt text appears in the logs; `false` → it doesn't → AC-7
 
-Last live run 2026-09-25: Gemini passed end to end (health 200, run `Completed`, span with 147 input / 19 output tokens, JSON mode accepted). OpenAI (`429 insufficient_quota`) and DeepSeek (`402 Insufficient Balance`) reached the real APIs but the accounts have no credit, and Ollama is not installed, so steps 2 to 5 stay open for those three. Step 6 ran with the roles swapped (`Planner` → `gemini`, `Default` → `deepseek`).
+Last live run 2026-09-25: Gemini passed end to end (health 200, run `Completed`, span with 147 input / 19 output tokens, JSON mode accepted). OpenAI (`429 insufficient_quota`) and DeepSeek (`402 Insufficient Balance`) reached the real APIs but the accounts have no credit, and Ollama is not installed, so steps 2 to 5 stay open for those three. Step 6 ran with the roles swapped (`Planner` → `gemini`, `Default` → `deepseek`). Rechecked the same day with rotated keys: Gemini still passes, OpenAI and DeepSeek still report no credit.
 
 ## Value sourcing
 - [x] Planner provider and model come from `Ai:Purposes:Planner`, else `Default` (vary each, confirm the span) → AC-1
