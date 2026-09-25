@@ -45,3 +45,8 @@ _Steps derived from spec 0009's acceptance criteria. Run live against the Api (`
 - AC-8 (validation `400`, nothing written) … live 400 matrix with row counts and hash, boundary passes
 - AC-9 (profile scoping `404`) … live second profile and unknown id matrix, Web proxy and detail page with another profile's ids
 - AC-10 (identical revision is a no op) … live identical revise on a draft and on a locked newest version
+
+## Automated tests
+- [x] `dotnet test WorkPilot.slnx` (with `WORKPILOTDB_CONNECTION` set) → Domain 139/139, Web 133/133, Api 160/160; `dotnet format --verify-no-changes` clean
+- Domain `ResumeTests` → AC-1 to AC-6, AC-8, AC-10 · Api `ResumeEndpointsTests` (real Postgres) → AC-1 to AC-10, including the trigger refusing raw SQL on a locked row and a lost race returning `409` · Web `ResumesTests`, `ResumesApiClientTests` → AC-1, AC-2, AC-4 to AC-9
+- Not automated: the repeat visit browser run (the InteractiveServer fix, spec 0016) and real file uploads through `InputFile`, which only the live steps above prove

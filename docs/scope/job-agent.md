@@ -49,7 +49,7 @@ Immutable resume versions once used in an application; base resume plus tailored
   - [x] `IResumeService` + `/internal/resumes` endpoints, profile scoped (AC-1, AC-3, AC-7, AC-9)
   - [x] `/resumes` and `/resumes/{id}` pages, file download proxy, nav item (AC-1, AC-6, AC-7)
 - [x] Verify it: `/check verify resume management`
-- [ ] Test it: `/test resume management`
+- [x] Test it: `/test resume management`
 
 ### 15. Cover letter generation
 Templates, AI-generated drafts (via the provider abstraction), versioning, linkage to the application that used them.
