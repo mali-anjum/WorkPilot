@@ -65,6 +65,8 @@ public class ChatClientPlannerTests
     [InlineData("```json\n{\"steps\":[{\"tool\":\"list_my_profile\",\"arguments\":{}}]}\n```")]
     [InlineData("```\n{\"steps\":[{\"tool\":\"list_my_profile\",\"arguments\":{}}]}\n```")]
     [InlineData("  ```json\n{\"steps\":[{\"tool\":\"list_my_profile\",\"arguments\":{}}]}\n```  \n")]
+    [InlineData("```json {\"steps\":[{\"tool\":\"list_my_profile\",\"arguments\":{}}]}```")]
+    [InlineData("```{\"steps\":[{\"tool\":\"list_my_profile\",\"arguments\":{}}]}```")]
     public async Task PlanAsync_WithAPlanWrappedInACodeFence_ParsesItFirstTry(string reply)
     {
         // covers spec 0006 AC-9: real models fence JSON even in JSON mode.

@@ -81,7 +81,14 @@ public sealed class ChatClientPlanner(
         }
 
         var firstLineEnd = trimmed.IndexOf('\n');
-        return firstLineEnd < 0 ? trimmed : trimmed[(firstLineEnd + 1)..^3].Trim();
+        if (firstLineEnd >= 0)
+        {
+            return trimmed[(firstLineEnd + 1)..^3].Trim();
+        }
+
+        // A one line fence (```json{...}```): drop the fence and any language tag.
+        var inner = trimmed[3..^3].TrimStart();
+        return inner.TrimStart("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".ToCharArray()).Trim();
     }
 
     private static string BuildPrompt(string goal, IReadOnlyList<ToolDescriptor> tools, string? retryError)

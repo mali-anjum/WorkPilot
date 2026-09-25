@@ -172,6 +172,28 @@ public class AiProviderTests
         Assert.True(ex.Message.Length <= 500);
     }
 
+    [Fact]
+    public async Task StreamingProviderError_IsTranslated_AndNeverCarriesTheApiKey()
+    {
+        // covers AC-6 and the key invariant on the streaming path, which nothing calls yet.
+        const string key = "sk-test-STREAMSECRET-1234567890";
+        await using var stub = await StubOpenAiServer.StartAsync([], new StubReply(401,
+            ErrorBody: $$$"""{"error":{"message":"Incorrect API key provided: {{{key}}}","type":"invalid_request_error"}}"""));
+        using var services = AiTestServices.Build(AiTestServices.SingleProvider("openai", stub.Endpoint, "gpt-4o-mini", apiKey: key));
+        var client = services.GetRequiredKeyedService<IChatClient>(AiPurposes.Default);
+
+        var ex = await Assert.ThrowsAsync<AiProviderException>(async () =>
+        {
+            await foreach (var _ in client.GetStreamingResponseAsync("hi"))
+            {
+            }
+        });
+
+        Assert.Equal("openai", ex.Provider);
+        Assert.Contains("401", ex.Message);
+        Assert.DoesNotContain("STREAMSECRET", ex.Message);
+    }
+
     [Theory]
     [InlineData(401)]
     [InlineData(402)]
