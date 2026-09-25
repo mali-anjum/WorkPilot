@@ -11,7 +11,7 @@
 </div>
 
 @code {
-    // The whole routed tree is InteractiveAuto (set once on <Routes> in App.razor), so
+    // The whole routed tree is InteractiveServer (set once on <Routes> in App.razor), so
     // MainLayout can't read HttpContext directly here (only a truly static component can).
     // App.razor reads the theme cookie once and forwards it down as a named cascading
     // value instead, which (unlike a RenderFragment) is a plain string and can cross the

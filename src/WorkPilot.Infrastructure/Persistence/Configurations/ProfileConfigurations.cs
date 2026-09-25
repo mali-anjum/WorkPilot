@@ -58,29 +58,6 @@ public class EducationConfiguration : IEntityTypeConfiguration<Education>
     }
 }
 
-public class ResumeConfiguration : IEntityTypeConfiguration<Resume>
-{
-    public void Configure(EntityTypeBuilder<Resume> builder)
-    {
-        builder.ToTable("resumes");
-        builder.HasKey(e => e.Id);
-        builder.Property(e => e.Name).HasMaxLength(200).IsRequired();
-        builder.HasMany(e => e.Versions).WithOne().HasForeignKey(v => v.ResumeId).OnDelete(DeleteBehavior.Cascade);
-    }
-}
-
-public class ResumeVersionConfiguration : IEntityTypeConfiguration<ResumeVersion>
-{
-    public void Configure(EntityTypeBuilder<ResumeVersion> builder)
-    {
-        builder.ToTable("resume_versions");
-        builder.HasKey(e => e.Id);
-        builder.HasIndex(e => new { e.ResumeId, e.VersionNumber }).IsUnique();
-        builder.Property(e => e.StorageUrl).IsRequired();
-        builder.Property(e => e.ParsedContent).HasColumnType("jsonb");
-    }
-}
-
 public class CoverLetterConfiguration : IEntityTypeConfiguration<CoverLetter>
 {
     public void Configure(EntityTypeBuilder<CoverLetter> builder)

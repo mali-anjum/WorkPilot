@@ -7,6 +7,7 @@ using WorkPilot.Web;
 using WorkPilot.Web.Components;
 using WorkPilot.Web.Features.Approvals;
 using WorkPilot.Web.Features.Auth;
+using WorkPilot.Web.Features.Resumes;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -86,6 +87,7 @@ builder.Services.AddScoped<IAuthService, SupabaseAuthService>();
 // over the Aspire service discovery network, never by touching EF Core here.
 builder.Services.AddHttpClient("api", client => client.BaseAddress = new Uri("https+http://api"));
 builder.Services.AddApprovalCenter(); // docs/specs/0007-approval-engine-center
+builder.Services.AddResumeManagementWeb(); // spec 0009
 
 var app = builder.Build();
 
@@ -110,6 +112,7 @@ app.UseAntiforgery();
 
 app.MapAuthEndpoints();
 app.MapApprovalCenterEndpoints();
+app.MapResumeFileEndpoints(); // spec 0009
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()

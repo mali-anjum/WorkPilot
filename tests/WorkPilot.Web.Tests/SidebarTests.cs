@@ -18,13 +18,13 @@ public class SidebarTests : TestContext
     }
 
     [Fact]
-    public void Renders_all_eleven_links_with_their_literal_hrefs()
+    public void Renders_all_twelve_links_with_their_literal_hrefs()
     {
         var cut = RenderComponent<Sidebar>();
 
         var links = cut.FindAll(".wp-sidebar__link");
 
-        Assert.Equal(11, links.Count);
+        Assert.Equal(12, links.Count);
         Assert.Contains(links, a => a.GetAttribute("href") == "/jobs" && a.TextContent == "Jobs");
         Assert.Contains(links, a => a.GetAttribute("href") == "/agent/runs" && a.TextContent == "Agent Runs");
     }

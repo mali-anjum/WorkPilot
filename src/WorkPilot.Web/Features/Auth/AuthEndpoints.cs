@@ -11,7 +11,7 @@ namespace WorkPilot.Web.Features.Auth;
 /// <summary>
 /// Sign in, sign out, and password reset, mapped as plain minimal API
 /// endpoints rather than routed Blazor components. This is deliberate: the
-/// app's Blazor <c>Routes</c> component renders under InteractiveAuto (see
+/// app's Blazor <c>Routes</c> component renders under InteractiveServer (see
 /// <c>App.razor</c>), and an interactive circuit cannot write a <c>Set-Cookie</c>
 /// response, only a real HTTP request/response cycle can issue the session
 /// cookie. Docs/specs/0004-auth-app-shell.md.

@@ -1,6 +1,7 @@
 # 0001. Adopt .NET Aspire modular monolith with Supabase for commodity plumbing
 
 **Date**: 2026-09-20
+**Amended by**: [0016](0016-blazor-server-render-mode.md) (render mode is now InteractiveServer, not Auto)
 **Status**: Accepted
 
 ## Summary

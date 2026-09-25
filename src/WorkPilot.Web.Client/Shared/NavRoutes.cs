@@ -20,6 +20,7 @@ public static class NavRoutes
         [
             new NavItem("Jobs", "/jobs"),
             new NavItem("Applications", "/applications"),
+            new NavItem("Resumes", "/resumes"),
             new NavItem("Universities", "/universities"),
             new NavItem("Outreach", "/outreach"),
         ]),

@@ -15,8 +15,10 @@
 </head>
 
 <body>
+    @* Server, not Auto: every routed page lives in this server project and some inject
+       server only services, so the WebAssembly half of Auto could never load them. *@
     <CascadingValue Value="Theme" Name="InitialTheme">
-        <Routes @rendermode="InteractiveAuto" />
+        <Routes @rendermode="InteractiveServer" />
     </CascadingValue>
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>

@@ -40,10 +40,18 @@ Scores a canonical Job against the user's Profile (skills, experience, education
 **Done when:** the dashboard reflects real application pipeline counts and at least one live "today's priorities" item sourced from real state.
 - [ ] Design it (spec): `/develop dashboard overview`
 
-### 14. Resume management
+### 14. Resume management · done
 Immutable resume versions once used in an application; base resume plus tailored/company-specific versions.
 **Done when:** a resume version used by a submitted application can never be silently edited, and version history is visible.
-- [ ] Design it (spec): `/architect resume management`
+- [x] Design it (spec): `/architect resume management` → [0009](../specs/0009-resume-management/index.md)
+- [x] Build it: `/develop resume management`
+  - [x] Domain draft/lock/version rules, `AddResumeManagement` migration with the locked row trigger, Postgres file store (AC-2 to AC-6, AC-8, AC-10)
+  - [x] `IResumeService` + `/internal/resumes` endpoints, profile scoped (AC-1, AC-3, AC-7, AC-9)
+  - [x] `/resumes` and `/resumes/{id}` pages, file download proxy, nav item (AC-1, AC-6, AC-7)
+- [x] Verify it: `/check verify resume management`
+- [x] Test it: `/test resume management`
+- [x] Review it (fresh model): `/check review` → [review](../reviews/2026-09-26-feat-resume-management.md)
+- [x] Document it: `/document pr`
 
 ### 15. Cover letter generation
 Templates, AI-generated drafts (via the provider abstraction), versioning, linkage to the application that used them.
