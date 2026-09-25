@@ -13,6 +13,8 @@ The walking skeleton of the whole product: discover a real job, know why it matc
   - [x] `POST /internal/jobs/ingestions` trigger + `GET /internal/jobs` read endpoint (AC-1, AC-7)
 - [x] Verify it: `/check verify job source ingestion & normalization`
 - [x] Test it: `/test job source ingestion & normalization`
+- [x] Review it (fresh model): `/check review` → [review](../reviews/2026-09-25-feat-job-ingestion.md)
+- [x] Document it: `/document pr` → PR #6
 
 `/check verify` (2026-09-24): PASS; see [verify.md](../specs/0008-job-source-ingestion/verify.md). Driven live against the Api (Hangfire worker on) and the real Greenhouse board API: `gitlab` with keyword `engineer` fetched 206 postings and stored 103 canonical jobs, each with one snapshot and `SourceUrl`/`RetrievedAt`/`VerifiedAt`/`Confidence` populated; a re-run changed nothing but `VerifiedAt`; a changed hash produced exactly one update and a second snapshot; an unknown board failed after Hangfire's 2 retries with nothing stored; `stripe` stored 61 more. One fix during verify: the Greenhouse client now has its own resilience pipeline, since the default 10 s per attempt timeout was too tight for a 3 MB board.
 
