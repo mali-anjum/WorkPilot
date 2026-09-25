@@ -23,7 +23,7 @@ _These are recommendations to keep the build orderly, not requirements. Skip any
 | 6 | Agent orchestrator core | Foundation | done |
 | 7 | AI provider abstraction | Foundation | done |
 | 8 | Approval engine & Approval center | Foundation | done |
-| 9 | Job source ingestion & normalization | Slice 1: Job Agent core loop | planned |
+| 9 | Job source ingestion & normalization | Slice 1: Job Agent core loop | done |
 | 10 | Job deduplication | Slice 1: Job Agent core loop | planned |
 | 11 | Job matching engine & scoring | Slice 1: Job Agent core loop | planned |
 | 12 | Jobs list & job detail | Slice 1: Job Agent core loop | planned |
