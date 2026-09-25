@@ -16,7 +16,7 @@ This spec turns the minimal approval pause that spec 0005 built into the real ap
 
 **Acceptance criteria** (the contract, each criterion is independently checkable):
 - **AC-1**: The three tier policy is enforced by one domain policy (`ApprovalPolicy`): an `AutoAllowed` tool executes without an `Approval` row; an `ApprovalRequired` or `ExplicitConfirmation` tool suspends its run (`AwaitingApproval`, a `Pending` `Approval` row) before it executes.
-- **AC-2**: An approval gated tool never executes unless an `Approval` for its step is `Approved`, carries a `DecidedBy`, and (for the `ExplicitConfirmation` tier) is marked `ExplicitlyConfirmed`. `AdvanceRunJob` checks this through `ApprovalPolicy.PermitsExecution` immediately before it moves the step to `Running`, using the stricter of the tool's current tier and the tier recorded on the approval; an approved step that no longer satisfies the policy fails its step and run instead of executing.
+- **AC-2**: An approval gated tool never executes unless an `Approval` for its step is `Approved`, carries a `DecidedBy`, and (for the `ExplicitConfirmation` tier) is marked `ExplicitlyConfirmed`. `AdvanceRunJob` checks this through `ApprovalPolicy.PermitsExecution` immediately before it moves the step to `Running`, using the stricter of the tool's current tier and the tier recorded on the approval; an approved step that no longer satisfies the policy is skipped (it never ran), its run fails, and an `ApprovalGateRefused` audit row is written instead of executing.
 - **AC-3**: When a run suspends, the `Approval` row stores an immutable evidence snapshot (`EvidenceJson`): a plain summary, the target (type, id, label), and the document versions the action involves (kind, version id, name, version number, created at), as described by the tool itself through the optional `IApprovalEvidenceProvider`. A tool that doesn't implement it, or whose description throws, still suspends; its snapshot is null (or carries the error as its summary).
 - **AC-4**: `GET /internal/approvals?profileId=` returns the Approval center view for that profile only: every `Pending` approval (oldest first) with approval id, risk tier, requested at, run id, run goal, step ordinal, tool name, tool description, the step's arguments, the evidence snapshot, and the confirmation phrase when the tier needs one; plus up to 20 most recently decided approvals (status, decided at, decided by, explicitly confirmed). Another profile's approvals never appear.
 - **AC-5**: `/approvals` in the Web app renders that view for the signed in founder: one card per pending approval showing target, risk badge, goal, tool, inputs, summary, and document versions (when present), with Approve and Reject; an empty state when nothing is pending; and a recent decisions list.
@@ -103,14 +103,14 @@ Domain additions: `ApprovalPolicy` (static, pure), `ApprovalEvidence`/`ApprovalT
 
 ## Build plan
 
-1. [ ] Domain: `ApprovalPolicy`, evidence records, `IApprovalEvidenceProvider`, `Approval` fields (`EvidenceJson`, `RequestedAt`, `ExplicitlyConfirmed`, `Tier`) and the confirmed `Decide`, satisfies **AC-1**, **AC-2**, **AC-8**
-2. [ ] Migration `AddApprovalEngine` (three columns, the index, the `Status` concurrency token), applied and confirmed live, satisfies **AC-3**, **AC-9**
-3. [ ] `AdvanceRunJob`: suspend via `ApprovalPolicy`, capture the evidence snapshot, audit it, and gate execution through `PermitsExecution`, satisfies **AC-1**, **AC-2**, **AC-3**, **AC-10**
-4. [ ] Demo tools: evidence on `approval_required_demo`, a new inert `explicit_confirmation_demo`, satisfies **AC-1**, **AC-3**, **AC-8**
-5. [ ] Application: `DecideApprovalHandler` (owner check, confirmation, domain transitions, audit) over an `IApprovalRepository` and `IAgentRunScheduler`, and `GetApprovalCenterHandler`, satisfies **AC-4**, **AC-7**, **AC-8**, **AC-9**, **AC-10**
-6. [ ] Api: move the decide endpoint out of `Program.cs` into `Endpoints/ApprovalEndpoints.cs` on the use case, add `GET /internal/approvals`, satisfies **AC-4**, **AC-7**, **AC-8**, **AC-9**
-7. [ ] Web: `/approvals` page, `ApprovalCenterClient`, and the antiforgery protected `POST /approvals/{id}/decide`, satisfies **AC-5**, **AC-6**
-8. [ ] Prove it live: suspend, list, approve and reject from the page, explicit confirmation, owner check, double decide, audit rows, satisfies every AC
+1. [x] Domain: `ApprovalPolicy`, evidence records, `IApprovalEvidenceProvider`, `Approval` fields (`EvidenceJson`, `RequestedAt`, `ExplicitlyConfirmed`, `Tier`) and the confirmed `Decide`, satisfies **AC-1**, **AC-2**, **AC-8**
+2. [x] Migration `AddApprovalEngine` (three columns, the index, the `Status` concurrency token), applied and confirmed live, satisfies **AC-3**, **AC-9**
+3. [x] `AdvanceRunJob`: suspend via `ApprovalPolicy`, capture the evidence snapshot, audit it, and gate execution through `PermitsExecution`, satisfies **AC-1**, **AC-2**, **AC-3**, **AC-10**
+4. [x] Demo tools: evidence on `approval_required_demo`, a new inert `explicit_confirmation_demo`, satisfies **AC-1**, **AC-3**, **AC-8**
+5. [x] Application: `DecideApprovalHandler` (owner check, confirmation, domain transitions, audit) over an `IApprovalRepository` and `IAgentRunScheduler`, and `GetApprovalCenterHandler`, satisfies **AC-4**, **AC-7**, **AC-8**, **AC-9**, **AC-10**
+6. [x] Api: move the decide endpoint out of `Program.cs` into `Endpoints/ApprovalEndpoints.cs` on the use case, add `GET /internal/approvals`, satisfies **AC-4**, **AC-7**, **AC-8**, **AC-9**
+7. [x] Web: `/approvals` page, `ApprovalCenterClient`, and the antiforgery protected `POST /approvals/{id}/decide`, satisfies **AC-5**, **AC-6**
+8. [x] Prove it live: suspend, list, approve and reject from the page, explicit confirmation, owner check, double decide, audit rows, satisfies every AC
 
 ## Consequences
 

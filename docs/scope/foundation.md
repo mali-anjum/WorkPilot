@@ -181,11 +181,11 @@ Code in `src/WorkPilot.AI/Providers/`, `src/WorkPilot.AI/Agent/ChatClientPlanner
 Enforces the three tier policy: auto allowed (read/search/analyze/classify/dedupe/generate/prepare/monitor/detect/suggest), approval required (send email, submit application, withdraw application, connect external account), explicit confirmation (delete data, security/permission changes, destructive ops). The Approval center screen (`/approvals`) shows pending actions with enough evidence to decide (resume/cover letter versions, risk, target) and Approve/Reject.
 **Done when:** a tool marked "approval required" cannot execute without a recorded, user-issued approval; the Approval center lists it with full context and the decision is auditable.
 - [x] Design it (spec): `/architect approval engine & approval center` → [0007](../specs/0007-approval-engine-center/index.md)
-- [ ] Build it: `/develop approval engine & approval center`
-  - [ ] Domain policy + evidence snapshot + `AddApprovalEngine` migration, and the execution gate in `AdvanceRunJob` (AC-1, AC-2, AC-3, AC-10)
-  - [ ] Decide use case (owner check, typed confirmation, one guarded transaction) and `GET /internal/approvals` (AC-4, AC-7, AC-8, AC-9, AC-10)
-  - [ ] `/approvals` Approval center page + antiforgery protected decide form in Web (AC-5, AC-6)
-- [ ] Verify it: `/check verify approval engine & approval center`
+- [x] Build it: `/develop approval engine & approval center`
+  - [x] Domain policy + evidence snapshot + `AddApprovalEngine` migration, and the execution gate in `AdvanceRunJob` (AC-1, AC-2, AC-3, AC-10)
+  - [x] Decide use case (owner check, typed confirmation, one guarded transaction) and `GET /internal/approvals` (AC-4, AC-7, AC-8, AC-9, AC-10)
+  - [x] `/approvals` Approval center page + antiforgery protected decide form in Web (AC-5, AC-6)
+- [x] Verify it: `/check verify approval engine & approval center`
 - [ ] Test it: `/test approval engine & approval center`
 - [ ] Review it (fresh model): `/check review approval engine & approval center`
 - [ ] Document it: `/document approval engine & approval center`
