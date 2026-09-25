@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using WorkPilot.Application.Modules.Profile.Resumes;
+using WorkPilot.Domain.Modules.Profile;
 
 namespace WorkPilot.Api.Endpoints;
 
@@ -10,6 +11,13 @@ namespace WorkPilot.Api.Endpoints;
 /// </summary>
 public static class ResumeEndpoints
 {
+    /// <summary>
+    /// The largest create or revise request accepted: the 5 MB file plus room for the text fields
+    /// (100,000 characters, up to 4 bytes each). Enforced before the body is buffered, so an oversized
+    /// upload is refused with <c>413</c> instead of being read into memory first (AC-8).
+    /// </summary>
+    public const long MaxUploadRequestBytes = ResumeRules.FileMaxBytes + (1024 * 1024);
+
     /// <summary>Maps the <c>/internal/resumes</c> endpoints.</summary>
     public static IEndpointRouteBuilder MapResumeEndpoints(this IEndpointRouteBuilder app)
     {
@@ -28,7 +36,12 @@ public static class ResumeEndpoints
         // Creates a base resume (multipart: profileId, name, content, note?, file?) (AC-1, AC-8).
         group.MapPost("/", async (HttpRequest request, IResumeService resumes, CancellationToken ct) =>
         {
-            var form = await ReadFormAsync(request, ct);
+            var (form, tooLarge) = await ReadFormAsync(request, ct);
+            if (tooLarge)
+            {
+                return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+            }
+
             if (form is null || !TryGetGuid(form, "profileId", out var profileId))
             {
                 return Results.ValidationProblem(Error("profileId", "A multipart form with profileId is required."));
@@ -40,7 +53,7 @@ public static class ResumeEndpoints
                 new CreateResumeCommand(profileId, form["name"], form["content"], form["note"], ToUpload(file, stream)),
                 ct);
             return ToHttp(result, detail => Results.Created($"/internal/resumes/{detail.Id}", detail));
-        });
+        }).WithUploadLimit();
 
         // Creates a tailored resume copied from one of the profile's versions (AC-6).
         group.MapPost("/tailored", async ([FromBody] TailorResumeRequest body, IResumeService resumes, CancellationToken ct) =>
@@ -55,7 +68,12 @@ public static class ResumeEndpoints
         // or a new version when the newest is locked (AC-2, AC-4, AC-10). 409 on a lost race (AC-5).
         group.MapPost("/{id:guid}/revisions", async (Guid id, HttpRequest request, IResumeService resumes, CancellationToken ct) =>
         {
-            var form = await ReadFormAsync(request, ct);
+            var (form, tooLarge) = await ReadFormAsync(request, ct);
+            if (tooLarge)
+            {
+                return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+            }
+
             if (form is null || !TryGetGuid(form, "profileId", out var profileId))
             {
                 return Results.ValidationProblem(Error("profileId", "A multipart form with profileId is required."));
@@ -68,7 +86,7 @@ public static class ResumeEndpoints
                 new ReviseResumeCommand(profileId, id, form["content"], form["note"], ToUpload(file, stream), removeFile),
                 ct);
             return ToHttp(result, Results.Ok);
-        });
+        }).WithUploadLimit();
 
         // Locks a version because an application used it; idempotent (AC-3). Feature 17's hook.
         group.MapPost("/versions/{versionId:guid}/lock", async (Guid versionId, [FromBody] LockResumeVersionRequest body, IResumeService resumes, CancellationToken ct) =>
@@ -83,8 +101,33 @@ public static class ResumeEndpoints
         return app;
     }
 
-    private static async Task<IFormCollection?> ReadFormAsync(HttpRequest request, CancellationToken ct) =>
-        request.HasFormContentType ? await request.ReadFormAsync(ct) : null;
+    private static RouteHandlerBuilder WithUploadLimit(this RouteHandlerBuilder builder) =>
+        builder
+            .WithMetadata(new RequestSizeLimitAttribute(MaxUploadRequestBytes))
+            .WithFormOptions(multipartBodyLengthLimit: MaxUploadRequestBytes);
+
+    // Reads the multipart form, reporting an over the limit body instead of throwing: Kestrel signals
+    // it with a 413 BadHttpRequestException, the form reader with an InvalidDataException.
+    private static async Task<(IFormCollection? Form, bool TooLarge)> ReadFormAsync(HttpRequest request, CancellationToken ct)
+    {
+        if (!request.HasFormContentType)
+        {
+            return (null, false);
+        }
+
+        try
+        {
+            return (await request.ReadFormAsync(ct), false);
+        }
+        catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            return (null, true);
+        }
+        catch (InvalidDataException)
+        {
+            return (null, true);
+        }
+    }
 
     private static bool TryGetGuid(IFormCollection form, string key, out Guid value) =>
         Guid.TryParse(form[key], out value) && value != Guid.Empty;

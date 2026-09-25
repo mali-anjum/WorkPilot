@@ -212,6 +212,26 @@ public class ResumeEndpointsTests(SharedApiFactory factory) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Lock_ThatLosesARaceToAnotherLock_KeepsTheFirstApplication()
+    {
+        // covers AC-3, AC-5: the service still believes v1 is unlocked, but another application locked it meanwhile
+        var created = await CreateOkAsync(_profileA);
+        var v1Id = created.Versions[0].Id;
+        using var scope = factory.Services.CreateScope();
+        var scopedDb = scope.ServiceProvider.GetRequiredService<WorkPilotDbContext>();
+        var service = scope.ServiceProvider.GetRequiredService<IResumeService>();
+        await scopedDb.ResumeVersions.FirstAsync(v => v.Id == v1Id); // tracked as unlocked
+        var winner = Guid.NewGuid();
+        await LockAsync(_profileA, v1Id, winner);
+
+        var result = await service.LockVersionAsync(_profileA, v1Id, Guid.NewGuid(), CancellationToken.None);
+
+        Assert.Equal(ResumeResultStatus.Ok, result.Status);
+        Assert.Equal(winner, result.Value!.LockedByApplicationId);
+        Assert.Equal(winner, (await GetOkAsync(_profileA, created.Id)).Versions.Single().LockedByApplicationId);
+    }
+
+    [Fact]
     public async Task Tailor_CopiesTheSourceVersionIntoASeparateResume_AndLeavesTheSourceUnchanged()
     {
         // covers AC-6
@@ -315,6 +335,24 @@ public class ResumeEndpointsTests(SharedApiFactory factory) : IAsyncLifetime
         var response = await CreateAsync(_profileA, "name", "", null, ("resume.pdf", new byte[ResumeRules.FileMaxBytes]));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_AndRevise_WithABodyOverTheUploadLimit_Return413AndWriteNothing()
+    {
+        // covers AC-8: an oversized upload is refused before it is read, not after
+        var created = await CreateOkAsync(_profileA);
+        var tooBig = ("resume.pdf", new byte[WorkPilot.Api.Endpoints.ResumeEndpoints.MaxUploadRequestBytes + 1]);
+        var filesBefore = await CountFilesAsync();
+
+        var create = await CreateAsync(_profileA, "name", "text", null, tooBig);
+        var revise = await PostReviseAsync(_profileA, created.Id, "text", null, tooBig);
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, create.StatusCode);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, revise.StatusCode);
+        Assert.Single((await _client.GetFromJsonAsync<List<ResumeSummaryDto>>($"/internal/resumes?profileId={_profileA}"))!);
+        Assert.Equal(filesBefore, await CountFilesAsync());
+        Assert.Equal(1, await CountVersionsAsync(created.Id));
     }
 
     [Fact]

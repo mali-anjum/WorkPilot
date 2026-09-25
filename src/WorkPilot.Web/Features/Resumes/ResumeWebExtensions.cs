@@ -42,5 +42,5 @@ public static class ResumeWebExtensions
 
     /// <summary>The signed in founder's profile id, from the session cookie's claim (spec 0004).</summary>
     public static Guid? ProfileId(ClaimsPrincipal user) =>
-        Guid.TryParse(user.FindFirst(PersistedAuthState.ProfileIdClaimType)?.Value, out var id) ? id : null;
+        Guid.TryParse(user.FindFirst(PersistedAuthState.ProfileIdClaimType)?.Value, out var id) && id != Guid.Empty ? id : null;
 }

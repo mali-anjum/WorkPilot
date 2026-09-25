@@ -58,7 +58,7 @@ This spec designs how your resumes live in WorkPilot: one or more base resumes, 
 
 **Domain operations** (`Domain/Modules/Profile`, no framework code):
 - `Resume.CreateBase(profileId, name, content, note, file?, now)` → resume with v1 draft.
-- `Resume.CreateTailored(profileId, name, targetCompany, source: ResumeVersion, now)` → resume with v1 draft copying source content and file; `SourceVersionId = source.Id`.
+- `Resume.CreateTailored(profileId, name, targetCompany, source: ResumeVersion, note?, now)` → resume with v1 draft copying source content and file; `SourceVersionId = source.Id`. With no note, the service writes `Tailored for <company> from <source name> v<N>` (cut to 500 chars).
 - `Resume.Revise(content, note, newFile?, removeFile, now)` → `ReviseOutcome` (`UpdatedDraft` | `CreatedVersion` | `Unchanged`) plus the affected version.
 - `ResumeVersion.Lock(applicationId, now)`; `ResumeVersion.IsLocked`.
 - `ResumeFileRef` value object (key, file name, content type, size); `ResumeRules` holds the limits for AC-8 and a `ValidationException`-style `ResumeValidationException`; editing a locked version throws `ResumeVersionLockedException`.
@@ -70,7 +70,7 @@ This spec designs how your resumes live in WorkPilot: one or more base resumes, 
 | `/internal/resumes?profileId=` | GET | profileId | `ResumeSummaryDto[]` (id, name, kind, targetCompany, latestVersionNumber, latestIsLocked, versionCount, updatedAt) | 400 missing profileId |
 | `/internal/resumes/{id}?profileId=` | GET | id, profileId | `ResumeDetailDto` (resume fields, sourceVersionId, versions newest first) | 404 |
 | `/internal/resumes` | POST multipart | profileId, name, content, note?, file? | 201 `ResumeDetailDto` | 400, 404 profile |
-| `/internal/resumes/tailored` | POST JSON | profileId, sourceVersionId, name, targetCompany | 201 `ResumeDetailDto` | 400, 404 |
+| `/internal/resumes/tailored` | POST JSON | profileId, sourceVersionId, name, targetCompany, note? | 201 `ResumeDetailDto` | 400, 404 |
 | `/internal/resumes/{id}/revisions` | POST multipart | profileId, content, note?, file?, removeFile? | 200 `ReviseResumeResultDto` (outcome, versionNumber, detail) | 400, 404 |
 | `/internal/resumes/versions/{versionId}/lock` | POST JSON | profileId, applicationId | 200 `ResumeVersionDto` | 400 empty applicationId, 404 |
 | `/internal/resumes/versions/{versionId}/file?profileId=` | GET | versionId, profileId | file bytes, content type, file name | 404 no version or no file |
