@@ -51,6 +51,7 @@ Architecture: Clean Architecture. Layers: `Domain` (entities, value objects) →
 - Document public APIs (controllers/endpoints, services) with XML doc comments.
 - One consistent error handling pattern across the API (not ad hoc try/catch per endpoint); not yet chosen, decide and record when the first real error path is built.
 - Validate configuration/env vars at startup; fail fast rather than a null reference deep in a request.
+- AI: each purpose (`Default`, `Planner`, ...) picks a provider and model in the `Ai` section of `src/WorkPilot.Api/appsettings.json`; switching is config only (`Ai__Purposes__<purpose>__Provider`/`__Model`). The committed default is the `Fake` provider, so no key is needed to build or test. Keys never go in a tracked file: `dotnet user-secrets set "Ai:Providers:<name>:ApiKey" <key> --project src/WorkPilot.Api` in dev, `Ai__Providers__<name>__ApiKey` env vars in prod. `GET /health/ai` checks the Default provider on demand (docs/specs/0006-ai-provider-abstraction).
 - Format with `dotnet format` + `.editorconfig`; a `.githooks/pre-commit` hook runs `dotnet format` on staged `.cs` files before commit (format only, not a full lint/typecheck gate yet). One time per clone: `git config core.hooksPath .githooks`.
 - Testing gate: unit + integration tests with xUnit (`WebApplicationFactory` for integration tests against a real Postgres, never a mock of the database).
 - No CI configured yet.
