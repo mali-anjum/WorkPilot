@@ -159,10 +159,23 @@ The shared machinery every domain agent runs on: Planner, Policy Engine, Tool Re
 
 `/check verify` (2026-09-24, re-run): PASS after one fix; see [verify.md](../specs/0005-agent-orchestrator-core/verify.md). Driven live against the Api and a fresh Postgres: auto-allowed run completes, approval-required run suspends, survives four Api restarts, and completes on approve (a second decide gets `409`, the decision is audited with the deciding `ProfileId`). The mid-planning `kill -9` step (AC-9) first failed: the run sat at `Planning` after restart because Hangfire.PostgreSql re-fetches a dead worker's job only after its 30 minute default `InvisibilityTimeout`. Fixed in `src/WorkPilot.Api/Program.cs` with a sliding 1 minute timeout; the stuck run then completed within 3s of restart. `dotnet test` 146/146 (Domain 47, Web 68, Api 31), `dotnet format --verify-no-changes` clean.
 
-### 7. AI provider abstraction · needs a decision
+### 7. AI provider abstraction · done
 `IAiProvider`-style interface so no domain logic hardcodes a single vendor. Must support at least two swappable providers per the spec (e.g. OpenAI-compatible and DeepSeek-compatible), routed through the AI Gateway pattern appropriate to the chosen stack.
 **Done when:** the same planning call can be swapped between two configured providers via configuration only, no code change.
-- [ ] Design it (spec): `/architect AI provider abstraction`
+- [x] Design it (spec): `/architect AI provider abstraction` → [0006](../specs/0006-ai-provider-abstraction/index.md)
+- [x] Build it: `/develop AI provider abstraction`
+  - [x] Per purpose keyed clients through one OpenAI compatible adapter (OpenAI, Gemini, DeepSeek, Ollama) plus the explicit Fake provider, proven against a stub server (AC-1, AC-2, AC-3)
+  - [x] Fail fast config validation and the Fake startup warning (AC-3, AC-4)
+  - [x] Retries, timeouts, provider error translation, `PlanningFailed` audit, fenced JSON tolerance (AC-5, AC-6, AC-9)
+  - [x] Telemetry with the sensitive data flag, and the `/health/ai` probe (AC-7, AC-8)
+- [x] Verify it: `/check verify AI provider abstraction` (accepted 2026-09-25 by the engineer on partial live proof: Gemini passed end to end; OpenAI and DeepSeek accepted the keys but the accounts have no credit; Ollama not installed; see verify.md)
+- [x] Review it (fresh model): `/check review` → [review](../reviews/2026-09-25-feat-ai-provider-abstraction.md)
+- [x] Document it: `/document pr` → PR #4
+- [x] Test it: `/test AI provider abstraction`
+
+Code in `src/WorkPilot.AI/Providers/`, `src/WorkPilot.AI/Agent/ChatClientPlanner.cs`, `src/WorkPilot.Workers/Agent/PlanRunJob.cs`, `/health/ai` in `src/WorkPilot.Api/Program.cs`. `/develop` (2026-09-24): builds on the superseded single `ActiveProvider` draft (`ca32dfc`), reworked to spec 0006. `dotnet test` 186/186 (Domain 47, Web 68, Api 71, 40 of them new for this feature against an in process OpenAI compatible stub server), `dotnet format --verify-no-changes` clean. Build plan task 7 (the live proof across OpenAI, Gemini, DeepSeek, and Ollama) is left for `/check verify`.
+
+`/check verify` (2026-09-25): every non billing step passed live (routing, startup validation, wrong key redaction, timeouts, `/health` spends no tokens, the sensitive data flag); Gemini passed end to end with token telemetry. The OpenAI, DeepSeek, and Ollama success paths stay unproven live (no credit, not installed); the engineer accepted that and marked the feature done. `/test` then `/check review` follow ups: 196/196 (streaming error path, one line code fences, non retried 4xx, Gemini error shapes, startup report), and `supabase/.env.example` documents the AI key env vars.
 
 ### 8. Approval engine & Approval center · needs a decision · GA
 Enforces the three tier policy: auto allowed (read/search/analyze/classify/dedupe/generate/prepare/monitor/detect/suggest), approval required (send email, submit application, withdraw application, connect external account), explicit confirmation (delete data, security/permission changes, destructive ops). The Approval center screen (`/approvals`) shows pending actions with enough evidence to decide (resume/cover letter versions, risk, target) and Approve/Reject.

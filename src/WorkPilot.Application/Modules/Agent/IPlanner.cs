@@ -8,7 +8,17 @@ public sealed record PlannedToolCall(string Tool, IReadOnlyDictionary<string, st
 public sealed record AgentPlan(IReadOnlyList<PlannedToolCall> Steps);
 
 /// <summary>The Planner's output failed to parse into a valid, non-empty plan (spec 0005, AC-7).</summary>
-public sealed class PlanParseException(string message) : Exception(message);
+public sealed class PlanParseException(string message) : Exception(message)
+{
+    /// <summary>The AI purpose whose model produced the unparseable plan (spec 0006, AC-6).</summary>
+    public string? Purpose { get; init; }
+
+    /// <summary>The configured provider name behind <see cref="Purpose"/>, e.g. <c>deepseek</c>.</summary>
+    public string? Provider { get; init; }
+
+    /// <summary>The model behind <see cref="Purpose"/>; null for the Fake provider.</summary>
+    public string? Model { get; init; }
+}
 
 /// <summary>
 /// Turns a goal into an ordered plan of tool calls via a single upfront model
@@ -17,5 +27,6 @@ public sealed class PlanParseException(string message) : Exception(message);
 public interface IPlanner
 {
     /// <exception cref="PlanParseException">The model's output didn't parse into a valid, non-empty plan even after one retry.</exception>
+    /// <exception cref="AiProviderException">The AI provider call itself failed, after its own retries.</exception>
     Task<AgentPlan> PlanAsync(string goal, IReadOnlyList<ToolDescriptor> availableTools, CancellationToken cancellationToken);
 }

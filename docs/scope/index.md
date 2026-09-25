@@ -21,7 +21,7 @@ _These are recommendations to keep the build orderly, not requirements. Skip any
 | 4 | Design system & UI foundation | Foundation | done |
 | 5 | Auth & app shell | Foundation | done |
 | 6 | Agent orchestrator core | Foundation | done |
-| 7 | AI provider abstraction | Foundation | planned |
+| 7 | AI provider abstraction | Foundation | done |
 | 8 | Approval engine & Approval center | Foundation | planned |
 | 9 | Job source ingestion & normalization | Slice 1: Job Agent core loop | planned |
 | 10 | Job deduplication | Slice 1: Job Agent core loop | planned |
@@ -55,6 +55,8 @@ _These are recommendations to keep the build orderly, not requirements. Skip any
 - **Multi language / i18n**: out of scope for a single user MVP
 - **Mobile layout**: desktop first per spec; responsive polish deferred
 - **Multi user / team accounts**: product is single user for now
+- **ReAct style Planner & cross run memory**: revisit once a real domain agent's goals show the plan then execute, cold start model is limiting (from spec 0005 follow up)
+- **Approval expiry**: pending approvals never expire today; revisit once real usage shows them piling up (from spec 0005 follow up)
 
 ## Epics
 
