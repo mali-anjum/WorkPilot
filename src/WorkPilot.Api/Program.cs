@@ -4,15 +4,16 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using WorkPilot.AI.Agent;
 using WorkPilot.AI.Providers;
+using WorkPilot.Api.Endpoints;
 using WorkPilot.Application.Modules.Agent;
 using WorkPilot.Application.Modules.Identity;
 using WorkPilot.Domain.Modules.Agent;
-using WorkPilot.Domain.Modules.Approvals;
 using WorkPilot.Infrastructure.Modules.Agent;
 using WorkPilot.Infrastructure.Modules.Agent.Tools;
 using WorkPilot.Infrastructure.Modules.Identity;
 using WorkPilot.Infrastructure.Persistence;
 using WorkPilot.Workers.Agent;
+using WorkPilot.Workers.Approvals;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -63,6 +64,7 @@ builder.Services.AddScoped<ITool, ListMyProfileTool>();
 builder.Services.AddScoped<ITool, ApprovalRequiredDemoTool>();
 builder.Services.AddScoped<PlanRunJob>();
 builder.Services.AddScoped<AdvanceRunJob>();
+builder.Services.AddApprovalEngine(); // docs/specs/0007-approval-engine-center
 
 // Hangfire, storage in the same Postgres database as EF Core (per spec:
 // "Background jobs / workflows | Hangfire, storage in the same Postgres
@@ -235,73 +237,9 @@ app.MapGet("/internal/agent/runs/{id:guid}", async (Guid id, WorkPilotDbContext 
     return Results.Ok(new AgentRunView(run.Id, run.Status.ToString(), steps));
 });
 
-// Internal only. The minimal decision hook the real Approval Center (scope
-// item 8) will build on top of: an atomic UPDATE guards against a double
-// decision (409) rather than a load-then-save race (AC-10).
-app.MapPost("/internal/agent/approvals/{id:guid}/decide", async (
-    Guid id,
-    DecideApprovalRequest request,
-    WorkPilotDbContext db,
-    IBackgroundJobClient jobs,
-    IAuditService audit,
-    CancellationToken cancellationToken) =>
-{
-    if (request.Decision is not ("Approve" or "Reject"))
-    {
-        return Results.BadRequest();
-    }
-
-    var newStatus = request.Decision == "Approve" ? ApprovalStatus.Approved : ApprovalStatus.Rejected;
-    var decidedAt = DateTimeOffset.UtcNow;
-
-    var updated = await db.Approvals
-        .Where(a => a.Id == id && a.Status == ApprovalStatus.Pending)
-        .ExecuteUpdateAsync(
-            setters => setters
-                .SetProperty(a => a.Status, newStatus)
-                .SetProperty(a => a.DecidedBy, request.DecidedBy)
-                .SetProperty(a => a.DecidedAt, decidedAt),
-            cancellationToken);
-
-    if (updated == 0)
-    {
-        var exists = await db.Approvals.AnyAsync(a => a.Id == id, cancellationToken);
-        return exists ? Results.Conflict() : Results.NotFound();
-    }
-
-    var approval = await db.Approvals.AsNoTracking().FirstAsync(a => a.Id == id, cancellationToken);
-    var step = await db.AgentSteps.FirstAsync(s => s.Id == approval.TargetId, cancellationToken);
-    var run = await db.AgentRuns.FirstAsync(r => r.Id == step.AgentRunId, cancellationToken);
-
-    // Spec 0005's data mapping: an approval's creation is audited as "Agent",
-    // but its decision is audited as the deciding profile.
-    audit.Record(request.DecidedBy.ToString(), $"Approval{newStatus}", ApprovalTargets.AgentStep, step.Id, null);
-
-    var resumed = newStatus == ApprovalStatus.Approved;
-    if (resumed)
-    {
-        // The step stays AwaitingApproval here: AdvanceRunJob moves it to
-        // Running right before executing, so "Running" keeps meaning "the
-        // tool may have started" and a non-idempotent approved tool isn't
-        // mistaken for one that crashed mid-execution (AC-9).
-        run.TransitionTo(AgentRunStatus.Executing);
-    }
-    else
-    {
-        step.TransitionTo(AgentStepStatus.Skipped);
-        run.TransitionTo(AgentRunStatus.Failed);
-    }
-
-    await WorkflowMirror.SyncAsync(db, run, cancellationToken);
-    await db.SaveChangesAsync(cancellationToken);
-
-    if (resumed)
-    {
-        jobs.Enqueue<AdvanceRunJob>(j => j.RunAsync(run.Id));
-    }
-
-    return Results.Ok(new DecideApprovalResponse(approval.Id, newStatus.ToString(), resumed));
-});
+// The approval engine (docs/specs/0007-approval-engine-center): the Approval
+// center view and the decide path, in Endpoints/ApprovalEndpoints.cs.
+app.MapApprovalEndpoints();
 
 app.Run();
 
@@ -324,9 +262,3 @@ internal sealed record AgentRunStepView(int Ordinal, string ToolName, string Sta
 
 /// <summary>Response body for <c>GET /internal/agent/runs/{id}</c>.</summary>
 internal sealed record AgentRunView(Guid AgentRunId, string Status, IReadOnlyList<AgentRunStepView> Steps);
-
-/// <summary>Request body for <c>POST /internal/agent/approvals/{id}/decide</c>.</summary>
-internal sealed record DecideApprovalRequest(string Decision, Guid DecidedBy);
-
-/// <summary>Response body for <c>POST /internal/agent/approvals/{id}/decide</c>.</summary>
-internal sealed record DecideApprovalResponse(Guid ApprovalId, string Status, bool Resumed);

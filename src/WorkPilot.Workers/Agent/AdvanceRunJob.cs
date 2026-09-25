@@ -59,7 +59,7 @@ public sealed class AdvanceRunJob(
 
         switch (next.Status)
         {
-            case AgentStepStatus.Pending when tool.RiskTier != ToolRiskTier.AutoAllowed:
+            case AgentStepStatus.Pending when ApprovalPolicy.RequiresDecision(tool.RiskTier):
                 await SuspendForApprovalAsync(run, next, tool);
                 return;
 
@@ -70,11 +70,21 @@ public sealed class AdvanceRunJob(
                 break;
 
             case AgentStepStatus.AwaitingApproval:
-                var approved = await db.Approvals.AnyAsync(a =>
-                    a.TargetType == ApprovalTargets.AgentStep && a.TargetId == next.Id && a.Status == ApprovalStatus.Approved);
-                if (!approved)
+                var approval = await FindApprovalAsync(next);
+                if (approval is not { Status: ApprovalStatus.Approved })
                 {
-                    return; // still waiting on a decision; the decide endpoint re-enqueues this run
+                    return; // still waiting on a decision (or rejected, which the decide path already settled); decide re-enqueues this run
+                }
+
+                // The execution gate (spec 0007, AC-2): an approval gated tool
+                // runs only when the three tier policy is satisfied by the
+                // recorded approval, checked here, right before Running,
+                // whatever path led to this job.
+                if (!ApprovalPolicy.PermitsExecution(tool.RiskTier, approval))
+                {
+                    // Never ran, so the step is skipped.
+                    await RefuseAtGateAsync(run, next, tool, approval, AgentStepStatus.Skipped);
+                    return;
                 }
 
                 next.TransitionTo(AgentStepStatus.Running);
@@ -90,14 +100,25 @@ public sealed class AdvanceRunJob(
                 return;
 
             case AgentStepStatus.Running:
+                // Defense in depth (spec 0007, AC-2): a gated step only ever
+                // reaches Running through the gate above, so a policy miss
+                // here means its approval no longer satisfies the policy;
+                // never re-execute it. It may have partly run before the
+                // crash, so the step fails (not skipped), audited the same way.
+                if (ApprovalPolicy.RequiresDecision(tool.RiskTier))
+                {
+                    var runningApproval = await FindApprovalAsync(next);
+                    if (!ApprovalPolicy.PermitsExecution(tool.RiskTier, runningApproval))
+                    {
+                        await RefuseAtGateAsync(run, next, tool, runningApproval, AgentStepStatus.Failed);
+                        return;
+                    }
+                }
+
                 break; // idempotent: safe to execute again
         }
 
-        var arguments = string.IsNullOrEmpty(next.ArgumentsJson)
-            ? new Dictionary<string, string>()
-            : JsonSerializer.Deserialize<Dictionary<string, string>>(next.ArgumentsJson) ?? [];
-
-        var result = await ExecuteWithRetryAsync(tool, new ToolExecutionContext(run.ProfileId, arguments));
+        var result = await ExecuteWithRetryAsync(tool, new ToolExecutionContext(run.ProfileId, ParseArguments(next)));
         var verified = verification.Verify(tool, result);
 
         db.ToolCalls.Add(new ToolCall
@@ -129,19 +150,80 @@ public sealed class AdvanceRunJob(
 
     private async Task SuspendForApprovalAsync(AgentRun run, AgentStep step, ITool tool)
     {
+        var evidenceJson = await DescribeEvidenceAsync(tool, new ToolExecutionContext(run.ProfileId, ParseArguments(step)));
+
         step.TransitionTo(AgentStepStatus.AwaitingApproval);
         db.Approvals.Add(new Approval
         {
             TargetType = ApprovalTargets.AgentStep,
             TargetId = step.Id,
             RiskTier = tool.RiskTier.ToString(),
+            EvidenceJson = evidenceJson,
         });
         run.TransitionTo(AgentRunStatus.AwaitingApproval);
-        audit.Record("Agent", "ApprovalRequested", ApprovalTargets.AgentStep, step.Id, null);
+        audit.Record("Agent", "ApprovalRequested", ApprovalTargets.AgentStep, step.Id, evidenceJson);
         await WorkflowMirror.SyncAsync(db, run, CancellationToken.None);
         await db.SaveChangesAsync();
         // No job re-enqueued: POST /internal/agent/approvals/{id}/decide resumes this run.
     }
+
+    // The evidence snapshot frozen onto the approval (spec 0007, AC-3),
+    // described by the tool itself with the same context it will execute
+    // with. Evidence is a courtesy to the approver, never a reason not to
+    // suspend: a tool that throws still suspends, with the error as summary.
+    private static async Task<string?> DescribeEvidenceAsync(ITool tool, ToolExecutionContext context)
+    {
+        if (tool is not IApprovalEvidenceProvider provider)
+        {
+            return null;
+        }
+
+        ApprovalEvidence evidence;
+        try
+        {
+            using var timeout = new CancellationTokenSource(tool.Timeout);
+            evidence = await provider.DescribeForApprovalAsync(context, timeout.Token);
+        }
+        catch (Exception ex)
+        {
+            evidence = new ApprovalEvidence($"Evidence could not be gathered: {ex.Message}", null, []);
+        }
+
+        return JsonSerializer.Serialize(evidence, JsonSerializerOptions.Web);
+    }
+
+    private Task<Approval?> FindApprovalAsync(AgentStep step) =>
+        db.Approvals
+            .Where(a => a.TargetType == ApprovalTargets.AgentStep && a.TargetId == step.Id)
+            .OrderByDescending(a => a.RequestedAt)
+            .FirstOrDefaultAsync();
+
+    // A gated step whose approval (if any) no longer satisfies the policy
+    // (spec 0007, AC-2): never executed now, the step ends in
+    // stepOutcome (Skipped when it never ran, Failed when it was already
+    // Running), the run fails, and the refusal is audited either way.
+    private async Task RefuseAtGateAsync(AgentRun run, AgentStep step, ITool tool, Approval? approval, AgentStepStatus stepOutcome)
+    {
+        step.TransitionTo(stepOutcome);
+        run.TransitionTo(AgentRunStatus.Failed);
+        var payload = JsonSerializer.Serialize(
+            new
+            {
+                approvalId = approval?.Id,
+                toolRiskTier = tool.RiskTier.ToString(),
+                approvalRiskTier = approval?.RiskTier,
+                explicitlyConfirmed = approval?.ExplicitlyConfirmed ?? false,
+            },
+            JsonSerializerOptions.Web);
+        audit.Record("Agent", "ApprovalGateRefused", ApprovalTargets.AgentStep, step.Id, payload);
+        await WorkflowMirror.SyncAsync(db, run, CancellationToken.None);
+        await db.SaveChangesAsync();
+    }
+
+    private static Dictionary<string, string> ParseArguments(AgentStep step) =>
+        string.IsNullOrEmpty(step.ArgumentsJson)
+            ? []
+            : JsonSerializer.Deserialize<Dictionary<string, string>>(step.ArgumentsJson) ?? [];
 
     private async Task FailStepAndRunAsync(AgentRun run, AgentStep step)
     {

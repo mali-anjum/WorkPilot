@@ -177,7 +177,15 @@ Code in `src/WorkPilot.AI/Providers/`, `src/WorkPilot.AI/Agent/ChatClientPlanner
 
 `/check verify` (2026-09-25): every non billing step passed live (routing, startup validation, wrong key redaction, timeouts, `/health` spends no tokens, the sensitive data flag); Gemini passed end to end with token telemetry. The OpenAI, DeepSeek, and Ollama success paths stay unproven live (no credit, not installed); the engineer accepted that and marked the feature done. `/test` then `/check review` follow ups: 196/196 (streaming error path, one line code fences, non retried 4xx, Gemini error shapes, startup report), and `supabase/.env.example` documents the AI key env vars.
 
-### 8. Approval engine & Approval center · needs a decision · GA
+### 8. Approval engine & Approval center · GA · done
 Enforces the three tier policy: auto allowed (read/search/analyze/classify/dedupe/generate/prepare/monitor/detect/suggest), approval required (send email, submit application, withdraw application, connect external account), explicit confirmation (delete data, security/permission changes, destructive ops). The Approval center screen (`/approvals`) shows pending actions with enough evidence to decide (resume/cover letter versions, risk, target) and Approve/Reject.
 **Done when:** a tool marked "approval required" cannot execute without a recorded, user-issued approval; the Approval center lists it with full context and the decision is auditable.
-- [ ] Design it (spec): `/architect approval engine & approval center`
+- [x] Design it (spec): `/architect approval engine & approval center` → [0007](../specs/0007-approval-engine-center/index.md)
+- [x] Build it: `/develop approval engine & approval center`
+  - [x] Domain policy + evidence snapshot + `AddApprovalEngine` migration, and the execution gate in `AdvanceRunJob` (AC-1, AC-2, AC-3, AC-10)
+  - [x] Decide use case (owner check, typed confirmation, one guarded transaction) and `GET /internal/approvals` (AC-4, AC-7, AC-8, AC-9, AC-10)
+  - [x] `/approvals` Approval center page + antiforgery protected decide form in Web (AC-5, AC-6)
+- [x] Verify it: `/check verify approval engine & approval center`
+- [x] Test it: `/test approval engine & approval center`
+- [x] Review it (fresh model): `/check review approval engine & approval center`
+- [x] Document it: `/document approval engine & approval center`

@@ -1,0 +1,130 @@
+/* The Approval center (spec 0007). Every value comes from tokens.css (docs/design.md). */
+
+.wp-approvals__section {
+    margin-top: var(--space-6);
+}
+
+.wp-approvals__heading {
+    font-size: var(--text-lg);
+    margin: 0 0 var(--space-4);
+}
+
+.wp-approvals__outcome,
+.wp-approvals__error {
+    margin: var(--space-4) 0 0;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+}
+
+.wp-approvals__outcome--success { border-color: var(--color-success); }
+.wp-approvals__outcome--warning { border-color: var(--color-warning); }
+.wp-approvals__outcome--danger,
+.wp-approvals__error { border-color: var(--color-danger); }
+
+.wp-approval {
+    margin-bottom: var(--space-5);
+}
+
+.wp-approval__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+.wp-approval__title {
+    font-size: var(--text-lg);
+    margin: 0;
+    font-family: var(--font-sans);
+}
+
+.wp-approval__summary {
+    margin: var(--space-3) 0;
+}
+
+.wp-approval__muted {
+    color: var(--color-text-muted);
+}
+
+.wp-approval__facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-2) var(--space-4);
+    margin: 0 0 var(--space-4);
+    font-size: var(--text-sm);
+}
+
+.wp-approval__facts dt {
+    color: var(--color-text-muted);
+}
+
+.wp-approval__facts dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.wp-approval__subheading {
+    font-size: var(--text-sm);
+    margin: var(--space-4) 0 var(--space-2);
+    color: var(--color-text-muted);
+}
+
+.wp-approval__inputs,
+.wp-approvals__recent {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+}
+
+.wp-approval__inputs th,
+.wp-approval__inputs td,
+.wp-approvals__recent th,
+.wp-approvals__recent td {
+    text-align: left;
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+    overflow-wrap: anywhere;
+}
+
+.wp-approval__documents {
+    margin: 0;
+    padding-left: var(--space-5);
+    font-size: var(--text-sm);
+}
+
+.wp-approval__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-3);
+    margin-top: var(--space-5);
+}
+
+.wp-approval__form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.wp-approval__confirm {
+    flex-basis: 100%;
+    font-size: var(--text-sm);
+}
+
+.wp-approval__confirm-input {
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-bg);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+
+.wp-approval__confirm-input:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+}
