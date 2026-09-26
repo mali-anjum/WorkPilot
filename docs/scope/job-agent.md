@@ -29,7 +29,7 @@ Same job from multiple sources collapses to one canonical Job with multiple sour
   - [x] `AddJobDeduplication` migration with link backfill, and Greenhouse ingestion end to end on links with locks and merges (AC-1, AC-2, AC-10 to AC-12)
   - [x] `companyName` on the trigger with rename rematch, and the Lever source (AC-6, AC-7)
   - [x] `ReconcileJobsJob`, the read endpoints and the split endpoint (AC-8, AC-9, AC-12, AC-13)
-- [ ] Verify it: `/check verify job deduplication`
+- [x] Verify it: `/check verify job deduplication`
 - [ ] Test it: `/test job deduplication`
 - [ ] Review it (fresh model): `/check review`
 - [ ] Document it: `/document pr`

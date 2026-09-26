@@ -47,7 +47,10 @@ public sealed partial class LeverJobSource(HttpClient http) : IJobSource
 
         await using var body = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(body, cancellationToken: cancellationToken);
-        return Parse(document.RootElement, source.CompanyName ?? site);
+        // The site name, never JobSource.CompanyName: the raw company feeds the
+        // content hash, and a rename must not look like a changed posting. The
+        // company name is applied later, to display and match only (spec 0017).
+        return Parse(document.RootElement, site);
     }
 
     /// <inheritdoc />
@@ -55,13 +58,14 @@ public sealed partial class LeverJobSource(HttpClient http) : IJobSource
     {
         using var document = JsonDocument.Parse(rawContent);
         return document.RootElement.ValueKind == JsonValueKind.Object
-            ? Map(document.RootElement, source.CompanyName ?? ReadSite(source))
+            ? Map(document.RootElement, ReadSite(source))
             : throw new JsonException("A stored Lever posting must be a JSON object.");
     }
 
     /// <summary>
     /// Maps a Lever postings response body (a JSON array). Lever gives no
-    /// company name, so every posting gets <paramref name="company"/>. Throws
+    /// company name, so every posting gets <paramref name="company"/> (the
+    /// site name). Throws
     /// <see cref="JsonException"/> when the body isn't an array.
     /// </summary>
     public static IReadOnlyList<RawJobPosting> Parse(JsonElement root, string company)
