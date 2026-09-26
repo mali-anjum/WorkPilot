@@ -47,6 +47,7 @@ public class WorkPilotDbContext(
     public DbSet<JobSource> JobSources => Set<JobSource>();
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<JobSnapshot> JobSnapshots => Set<JobSnapshot>();
+    public DbSet<JobSourceLink> JobSourceLinks => Set<JobSourceLink>();
     public DbSet<JobMatch> JobMatches => Set<JobMatch>();
 
     // Applications

@@ -29,6 +29,14 @@ public interface IJobSource
     /// is stored and the background job is retried (AC-6).
     /// </summary>
     Task<IReadOnlyList<RawJobPosting>> FetchAsync(JobSource source, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Maps one stored posting (the <see cref="RawJobPosting.RawContent"/> this
+    /// source wrote to a snapshot) back into a raw posting, with no fetch
+    /// (spec 0017). Used to rebuild a job's fields from a link that wasn't
+    /// fetched in this run, and by the split. Throws when it isn't one.
+    /// </summary>
+    RawJobPosting ParseStored(JobSource source, string rawContent);
 }
 
 /// <summary>What a <see cref="JobSource"/> row for one board looks like.</summary>

@@ -63,26 +63,36 @@ public sealed partial class GreenhouseJobSource(HttpClient http) : IJobSource
         var postings = new List<RawJobPosting>(jobs.GetArrayLength());
         foreach (var job in jobs.EnumerateArray())
         {
-            if (job.ValueKind != JsonValueKind.Object)
+            if (job.ValueKind == JsonValueKind.Object)
             {
-                continue;
+                postings.Add(Map(job, boardToken));
             }
-
-            postings.Add(new RawJobPosting(
-                ExternalId: ReadScalar(job, "id") ?? string.Empty,
-                SourceUrl: ReadScalar(job, "absolute_url") ?? string.Empty,
-                Title: ReadScalar(job, "title") ?? string.Empty,
-                Company: ReadScalar(job, "company_name") ?? boardToken,
-                LocationText: job.TryGetProperty("location", out var location) && location.ValueKind == JsonValueKind.Object
-                    ? ReadScalar(location, "name")
-                    : null,
-                DescriptionHtml: ReadScalar(job, "content"),
-                PostedAt: ReadDate(job, "first_published") ?? ReadDate(job, "updated_at"),
-                RawContent: job.GetRawText()));
         }
 
         return postings;
     }
+
+    /// <inheritdoc />
+    public RawJobPosting ParseStored(JobSource source, string rawContent)
+    {
+        using var document = JsonDocument.Parse(rawContent);
+        return document.RootElement.ValueKind == JsonValueKind.Object
+            ? Map(document.RootElement, ReadBoardToken(source))
+            : throw new JsonException("A stored Greenhouse posting must be a JSON object.");
+    }
+
+    // One element of the "jobs" array; its raw JSON is what a snapshot keeps.
+    private static RawJobPosting Map(JsonElement job, string boardToken) => new(
+        ExternalId: ReadScalar(job, "id") ?? string.Empty,
+        SourceUrl: ReadScalar(job, "absolute_url") ?? string.Empty,
+        Title: ReadScalar(job, "title") ?? string.Empty,
+        Company: ReadScalar(job, "company_name") ?? boardToken,
+        LocationText: job.TryGetProperty("location", out var location) && location.ValueKind == JsonValueKind.Object
+            ? ReadScalar(location, "name")
+            : null,
+        DescriptionHtml: ReadScalar(job, "content"),
+        PostedAt: ReadDate(job, "first_published") ?? ReadDate(job, "updated_at"),
+        RawContent: job.GetRawText());
 
     private static string ReadBoardToken(JobSource source)
     {

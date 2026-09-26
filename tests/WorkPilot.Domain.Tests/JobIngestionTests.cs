@@ -144,13 +144,13 @@ public class JobIngestionTests
     }
 
     [Fact]
-    public void Refresh_WithUnchangedContent_OnlyReverifies()
+    public void SeeAgain_WithUnchangedContent_OnlyReverifies()
     {
         // covers AC-4
         var job = Job.Create(Guid.NewGuid(), Normalized(), T0, 1.0m);
         var later = T0.AddHours(6);
 
-        var added = job.Refresh(Normalized(), later, 1.0m);
+        var added = job.SeeAgain(job.Links[0], Normalized(), later, 1.0m, NoOther);
 
         Assert.Null(added);
         Assert.Single(job.Snapshots);
@@ -160,14 +160,14 @@ public class JobIngestionTests
     }
 
     [Fact]
-    public void Refresh_WithChangedContent_UpdatesFieldsAndAddsASnapshot()
+    public void SeeAgain_WithChangedContent_UpdatesFieldsAndAddsASnapshot()
     {
         // covers AC-4
         var job = Job.Create(Guid.NewGuid(), Normalized(), T0, 1.0m);
         var later = T0.AddDays(1);
         var changed = Normalized(title: "Staff Backend Engineer");
 
-        var added = job.Refresh(changed, later, 1.0m);
+        var added = job.SeeAgain(job.Links[0], changed, later, 1.0m, NoOther);
 
         Assert.NotNull(added);
         Assert.Equal(2, job.Snapshots.Count);
@@ -179,11 +179,14 @@ public class JobIngestionTests
     }
 
     [Fact]
-    public void Refresh_WithADifferentPosting_Throws()
+    public void SeeAgain_WithADifferentPosting_Throws()
     {
         var job = Job.Create(Guid.NewGuid(), Normalized(), T0, 1.0m);
         var other = JobNormalizer.Normalize(Raw(id: "999"))!;
 
-        Assert.Throws<InvalidOperationException>(() => job.Refresh(other, T0, 1.0m));
+        Assert.Throws<InvalidOperationException>(() => job.SeeAgain(job.Links[0], other, T0, 1.0m, NoOther));
     }
+
+    private static NormalizedJob NoOther(JobSourceLink link) =>
+        throw new InvalidOperationException("Only one link: no other posting is needed.");
 }
