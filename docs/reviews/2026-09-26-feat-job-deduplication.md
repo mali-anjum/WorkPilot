@@ -1,0 +1,31 @@
+# Review, feat/job-deduplication, 2026-09-26
+
+**Reviewed by**: Sonnet (author on Opus 5.5)
+**Scope**: 26 files, branch vs base (`main`, merge base `2f0c742`)
+**Verdict**: Approve with nits
+
+## Summary
+This reworks job identity from `(JobSourceId, ExternalId)` on `Job` to a `JobSourceLink` per sighting, with an exact normalized match key, a primary-link selection rule, a Postgres advisory-lock race guard, a startup/triggered reconcile job, a split endpoint, and Lever as a second live source. The domain model (`Job.AttachLink`/`SeeAgain`/`MergeFrom`/`SplitLink`, `JobDedupKey`) is careful and well-invariant-checked, the migration's Up/Down and the hand-written deferred `PrimaryLinkId` FK are correct, and the merge/rename/reconcile transaction and lock-then-reread pattern is applied consistently — except in the split path, which is the one real gap found (see Major). Test coverage is strong and exercises nearly every acceptance criterion against real Postgres, including the concurrent-ingestion race.
+
+## Major
+### 🟠 `SplitAsync` never re-reads the job after taking the advisory lock, unlike every other merge path, `src/WorkPilot.Application/Modules/Jobs/JobDedupService.cs:89-112`
+**Problem**: `SplitAsync` loads `job` via `repository.GetJobAsync` *before* acquiring `LockDedupKeysAsync`, then never reloads it. Every other place that mutates a job under this lock (`JobIngestionService.ApplyAsync`, `JobDedupService.ReconcileKeyAsync`) explicitly re-reads after the lock is held, per the spec's own accepted fix ("a run looks its links up again after taking the lock"). `SplitAsync` is the one place this pattern is dropped. Under Postgres's default READ COMMITTED isolation, a link "seen again" (`Job.SeeAgain`, e.g. a concurrently running scheduled re-ingestion touching a *different* link on the same job) takes **no** key lock at all — matching only happens on first sighting — so it can commit fully between the split's pre-lock read and its own `SaveChangesAsync`. Because `Job` has no concurrency token, EF's generated `UPDATE` blindly overwrites every tracked column with the split's stale in-memory values, silently reverting the concurrent `SeeAgain`'s field/primary-link/provenance change (a lost update). If the concurrent write instead re-pointed or removed rows the split's stale graph still references, the split's own `SaveChangesAsync` can also surface as an unhandled `DbUpdateConcurrencyException` (0 rows affected) instead of a clean result.
+**Why it matters**: A manual split racing an in-flight ingestion on the same job (plausible: Hangfire-triggered re-ingestion of one source while an admin splits a link from another source on the same job) can silently discard a legitimate concurrent update, or throw a 500 instead of completing cleanly. This is exactly the class of bug the advisory-lock design exists to prevent, and the fix pattern already exists elsewhere in this PR.
+**Suggested fix**: After `LockDedupKeysAsync` in `SplitAsync`, reload `job` (and re-validate `IsDeleted`/link presence/link count) the same way `ApplyAsync` and `ReconcileKeyAsync` do, before calling `PostingResolver.CreateAsync`/`SplitLink`.
+
+## Minor
+### 🟡 No test exercises "which job a new link joins" when two jobs already share a key, `src/WorkPilot.Application/Modules/Jobs/JobIngestionService.cs:244-251`
+`FindJobToJoinAsync`'s tie-break (oldest non-deleted, else oldest soft-deleted revived) only matters when more than one job shares a `DedupKey` — the state a split deliberately creates. `JobDeduplicationTests` covers a split not re-merging via its own two links, but no test seeds a third, brand-new posting against a job pair that already shares a key (post-split or otherwise) to prove the lower-id/non-deleted tie-break actually fires. This is real branching logic the spec calls out explicitly ("possible after a split") and spec's own `verify.md` also leaves this value-sourcing row unchecked.
+
+## Nits
+- ⚪ `src/WorkPilot.Application/Modules/Jobs/Entities.cs:257-269` (`Job.UpdatePrimary`) and `:183-189` (`Job.MergeFrom`): the `postingOf(best)` branch (best link belongs to neither the touched/primary link nor the other job's former primary) is unreachable given the `PrimaryLinkId == RankLinks().First()` invariant maintained everywhere else — harmless defensive code, but worth a one-line comment noting it's unreachable-by-invariant so a future reader doesn't assume it's load-bearing.
+- ⚪ `src/WorkPilot.Api/Endpoints/JobsEndpoints.cs:130-140`: `GetJobAsync`'s per-link `db.JobSources.Where(...).Select(s => s.Type).First()` is a correlated subquery per link; fine at today's per-job link counts, but a small `Include`/join would read more clearly if link counts grow.
+
+## Strengths
+- The lock-then-reread pattern, the sorted advisory-lock ordering, and the deferred `PrimaryLinkId` FK (with the "why" documented right at the hand-written SQL) are all correctly reasoned through and match the spec's rationale precisely.
+- `Job.MergeFrom`/`SplitLink`/`AttachLink` correctly move EF-tracked children (`link.JobId = Id` before collection reassignment) so change tracking generates UPDATEs rather than orphan-deletes, and `MergeGroupAsync`'s match/application reassignment (delete-duplicates-then-update) avoids the obvious unique-constraint race.
+- The Lever adapter fix (raw `Company` always the site name, `CompanyName` applied only post-normalization) is exactly right and is now locked by `LeverJobSourceTests.A_company_name_on_the_source_never_changes_the_raw_posting_or_its_hash`.
+- `JobDeduplicationTests` is genuinely thorough: cross-source merge with primary-flip, distinct-location non-merge, split-then-no-remerge, stale-then-reconcile-with-match-move, rename-triggers-merge, revive-on-match, and the real two-context concurrent-ingestion race are all exercised against real Postgres.
+
+## Test coverage
+Strong and matches the spec's critical test scenarios almost one-for-one (AC-1 through AC-13 all have at least one automated test, per `verify.md`'s own accounting of 453 passing tests). The one gap is the split-created-multi-job tie-break noted above (Minor); the `MergeFrom`/`UpdatePrimary` dead branch noted above is intentionally defensive and not worth a test.

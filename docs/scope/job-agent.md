@@ -31,8 +31,8 @@ Same job from multiple sources collapses to one canonical Job with multiple sour
   - [x] `ReconcileJobsJob`, the read endpoints and the split endpoint (AC-8, AC-9, AC-12, AC-13)
 - [x] Verify it: `/check verify job deduplication`
 - [ ] Test it: `/test job deduplication`
-- [ ] Review it (fresh model): `/check review`
-- [ ] Document it: `/document pr`
+- [x] Review it (fresh model): `/check review` → [review](../reviews/2026-09-26-feat-job-deduplication.md)
+- [x] Document it: `/document pr`
 
 ### 11. Job matching engine & scoring · needs a decision
 Scores a canonical Job against the user's Profile (skills, experience, education, location, remote preference, salary, technology, job type, work authorization). Output must be explainable: score, confidence, evidence, missing requirements, unknown information.
