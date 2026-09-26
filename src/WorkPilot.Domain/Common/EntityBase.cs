@@ -17,4 +17,11 @@ public abstract class SoftDeletableEntity : Entity, ISoftDeletable
         IsDeleted = true;
         DeletedAt = occurredAtUtc;
     }
+
+    /// <summary>Brings a soft deleted entity back (e.g. a job whose posting was seen again, spec 0017).</summary>
+    public void Restore()
+    {
+        IsDeleted = false;
+        DeletedAt = null;
+    }
 }

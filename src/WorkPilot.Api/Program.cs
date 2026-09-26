@@ -8,6 +8,7 @@ using WorkPilot.Api.Endpoints;
 using WorkPilot.Application.Modules.Agent;
 using WorkPilot.Application.Modules.Identity;
 using WorkPilot.Domain.Modules.Agent;
+using WorkPilot.Domain.Modules.Jobs;
 using WorkPilot.Infrastructure.Modules.Agent;
 using WorkPilot.Infrastructure.Modules.Agent.Tools;
 using WorkPilot.Infrastructure.Modules.Identity;
@@ -123,7 +124,16 @@ if (builder.Configuration.GetValue<bool>("Hangfire:DisableServer"))
 // health endpoint.
 using (var scope = app.Services.CreateScope())
 {
-    await scope.ServiceProvider.GetRequiredService<WorkPilotDbContext>().Database.MigrateAsync();
+    var db = scope.ServiceProvider.GetRequiredService<WorkPilotDbContext>();
+    await db.Database.MigrateAsync();
+
+    // Job deduplication (docs/specs/0017-job-deduplication, AC-9): when any job's
+    // match key is stale (a rule change, or rows from before this feature), the
+    // reconcile job recomputes the keys and merges the duplicates, once.
+    if (await db.Jobs.IgnoreQueryFilters().AnyAsync(j => j.DedupRuleVersion < JobDedupKey.CurrentRuleVersion))
+    {
+        scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>().Enqueue<ReconcileJobsJob>(j => j.RunAsync());
+    }
 }
 
 // Configure the HTTP request pipeline.

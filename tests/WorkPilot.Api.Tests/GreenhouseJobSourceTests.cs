@@ -140,6 +140,28 @@ public class GreenhouseJobSourceTests
         await Assert.ThrowsAsync<HttpRequestException>(() => source.FetchAsync(GreenhouseSource(), CancellationToken.None));
     }
 
+    [Fact]
+    public void ParseStored_RebuildsTheSamePostingFromItsSnapshotContent()
+    {
+        // covers spec 0017 (a link's posting rebuilt with no fetch, for a split or a merge)
+        using var doc = JsonDocument.Parse(Payload);
+        var fetched = GreenhouseJobSource.Parse(doc.RootElement, "gitlab")[0];
+
+        var stored = new GreenhouseJobSource(new HttpClient()).ParseStored(GreenhouseSource(), fetched.RawContent);
+
+        Assert.Equal(fetched, stored);
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("not json")]
+    public void ParseStored_RejectsContentThatIsNotOnePosting(string rawContent)
+    {
+        var source = new GreenhouseJobSource(new HttpClient());
+
+        Assert.ThrowsAny<JsonException>(() => source.ParseStored(GreenhouseSource(), rawContent));
+    }
+
     private static JobSource GreenhouseSource() =>
         new() { Type = "Greenhouse", Name = "greenhouse:gitlab", Config = """{"boardToken": "gitlab"}""" };
 
