@@ -11,9 +11,9 @@ public interface IJobRepository
 {
     /// <summary>
     /// Runs <paramref name="work"/> in one database transaction and commits
-    /// it, or nothing. On a transient failure the whole unit may run again on
-    /// a clean change tracker, so <paramref name="work"/> must load everything
-    /// it touches itself.
+    /// it, or nothing. On a transient failure, or when another writer changed
+    /// one of its jobs first, the whole unit runs again on a clean change
+    /// tracker, so <paramref name="work"/> must load everything it touches itself.
     /// </summary>
     Task<T> InTransactionAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken);
 
@@ -23,6 +23,13 @@ public interface IJobRepository
     /// called inside <see cref="InTransactionAsync{T}"/>.
     /// </summary>
     Task LockDedupKeysAsync(IEnumerable<string> keys, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reads a job's match key without tracking it (its stored key, or the key
+    /// of its fields when it has none yet), or <c>null</c> for an unknown job.
+    /// Used to take the key's lock before the job itself is loaded.
+    /// </summary>
+    Task<string?> GetDedupKeyAsync(Guid jobId, CancellationToken cancellationToken);
 
     /// <summary>Loads a job source by id, or <c>null</c>.</summary>
     Task<JobSource?> GetSourceAsync(Guid jobSourceId, CancellationToken cancellationToken);

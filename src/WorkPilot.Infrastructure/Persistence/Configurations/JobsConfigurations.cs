@@ -43,6 +43,16 @@ public class JobConfiguration : IEntityTypeConfiguration<Job>
 
         builder.OwnsOne(e => e.Provenance, ProvenanceConfigurations.Configure);
 
+        // Postgres's own system column as a concurrency token (as on agent_runs):
+        // a split, an ingestion and a reconcile touching one job can't silently
+        // overwrite each other; the loser retries its whole unit on fresh data
+        // (JobRepository.InTransactionAsync, spec 0017).
+        builder.Property<uint>("xmin")
+            .HasColumnName("xmin")
+            .HasColumnType("xid")
+            .ValueGeneratedOnAddOrUpdate()
+            .IsConcurrencyToken();
+
         builder.HasMany(e => e.Links).WithOne().HasForeignKey(l => l.JobId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(e => e.Snapshots).WithOne().HasForeignKey(s => s.JobId).OnDelete(DeleteBehavior.Cascade);
     }

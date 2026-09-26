@@ -89,6 +89,18 @@ public sealed class JobDedupService(
     public Task<SplitResult> SplitAsync(Guid jobId, Guid linkId, CancellationToken cancellationToken) =>
         repository.InTransactionAsync(async ct =>
         {
+            // Lock first, then load: both halves may take this key, so a first
+            // sighting joining it waits for the split. A write that takes no key
+            // lock (a known link seen again) is caught by the job's concurrency
+            // token, and the loser runs again on fresh data.
+            var key = await repository.GetDedupKeyAsync(jobId, ct);
+            if (key is null)
+            {
+                return new SplitResult(SplitOutcome.NotFound, jobId, null);
+            }
+
+            await repository.LockDedupKeysAsync([key], ct);
+
             var job = await repository.GetJobAsync(jobId, ct);
             if (job is null || job.IsDeleted || job.Links.All(l => l.Id != linkId))
             {
@@ -99,9 +111,6 @@ public sealed class JobDedupService(
             {
                 return new SplitResult(SplitOutcome.LastLink, jobId, null);
             }
-
-            // Both halves may take this key, so a concurrent ingestion must wait for the split.
-            await repository.LockDedupKeysAsync([job.DedupKey ?? JobDedupKey.For(job.Company, job.Title, job.Location)], ct);
 
             var postings = await PostingResolver.CreateAsync(repository, sources, [job], ct);
             var created = job.SplitLink(linkId, time.GetUtcNow(), postings.Of);

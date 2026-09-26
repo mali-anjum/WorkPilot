@@ -296,6 +296,81 @@ public class JobDeduplicationTests(SharedApiFactory factory) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/internal/jobs/{Guid.NewGuid()}")).StatusCode);
     }
 
+    [Fact]
+    public async Task After_a_split_a_new_posting_joins_the_oldest_live_job_on_the_key()
+    {
+        // covers the "which job a new link joins" rule (spec 0017, Decision; AC-11)
+        var board = await SeedSourceAsync(_board);
+        var ats = await SeedSourceAsync(_ats);
+        await IngestAsync(_board, board, T0, Posting("b1", "Data Scientist", "Madrid"));
+        await IngestAsync(_ats, ats, T0.AddHours(1), Posting("a1", "Data Scientist", "Madrid"));
+
+        Guid original, split;
+        await using (var db = CreateDbContext())
+        {
+            var job = Assert.Single(await JobsAsync(db));
+            original = job.Id;
+            split = (await SplitAsync(job.Id, job.Links.Single(l => l.JobSourceId == ats).Id)).NewJobId!.Value;
+        }
+
+        // Two live jobs now share the key: a repost joins the older one (lower id).
+        Assert.True(original.CompareTo(split) < 0);
+        await IngestAsync(_board, board, T0.AddDays(1), Posting("b1", "Data Scientist", "Madrid"), Posting("b2", "Data Scientist", "Madrid"));
+        await using (var db = CreateDbContext())
+        {
+            Assert.Contains((await JobsAsync(db)).Single(j => j.Id == original).Links, l => l.ExternalId == "b2");
+            (await db.Jobs.SingleAsync(j => j.Id == original)).SoftDelete(T0.AddDays(1));
+            await db.SaveChangesAsync();
+        }
+
+        // With the older one soft deleted, the next repost joins the live split job instead.
+        await IngestAsync(_board, board, T0.AddDays(2), Posting("b3", "Data Scientist", "Madrid"));
+        await using (var db = CreateDbContext())
+        {
+            var jobs = await JobsAsync(db);
+            Assert.Contains(jobs.Single(j => j.Id == split).Links, l => l.ExternalId == "b3");
+            Assert.True(jobs.Single(j => j.Id == original).IsDeleted);
+        }
+    }
+
+    [Fact]
+    public async Task A_unit_whose_job_changed_underneath_it_runs_again_instead_of_overwriting()
+    {
+        // covers the split vs ingestion race (review of spec 0017): the job's xmin
+        // turns a lost update into a retry of the whole unit on fresh data.
+        var board = await SeedSourceAsync(_board);
+        await IngestAsync(_board, board, T0, Posting("b1", "Staff Engineer", "Vienna", "First text."));
+        Guid jobId;
+        await using (var db = CreateDbContext())
+        {
+            jobId = Assert.Single(await JobsAsync(db)).Id;
+        }
+
+        await using var unitDb = CreateDbContext();
+        var repository = new JobRepository(unitDb);
+        var attempts = 0;
+        await repository.InTransactionAsync(async ct =>
+        {
+            attempts++;
+            var job = await repository.GetJobAsync(jobId, ct);
+            if (attempts == 1)
+            {
+                // Another writer commits a change to the same job after this unit read it.
+                await IngestAsync(_board, board, T0.AddDays(1), Posting("b1", "Staff Engineer", "Vienna", "Second text."));
+            }
+
+            job!.SalaryRangeMin = 100_000m;
+            await repository.SaveChangesAsync(ct);
+            return 0;
+        }, CancellationToken.None);
+
+        Assert.Equal(2, attempts);
+        await using var check = CreateDbContext();
+        var saved = Assert.Single(await JobsAsync(check));
+        Assert.Equal("Second text.", saved.Description);
+        Assert.Equal(100_000m, saved.SalaryRangeMin);
+    }
+
     private RawJobPosting Posting(string id, string title, string? location, string description = "Build it.") =>
         PostingFor(_company, id, title, location, description);
 

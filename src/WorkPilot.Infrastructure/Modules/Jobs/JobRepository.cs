@@ -15,24 +15,50 @@ public sealed class JobRepository(WorkPilotDbContext db) : IJobRepository
     /// </summary>
     public const int DedupLockClass = 17;
 
+    /// <summary>How many times a unit runs when another writer changed one of its jobs first.</summary>
+    public const int MaxConcurrencyAttempts = 3;
+
     /// <inheritdoc />
-    public Task<T> InTransactionAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken)
+    public async Task<T> InTransactionAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken)
     {
         // Through the execution strategy, so a retrying one (Aspire's default)
         // allows the transaction; each attempt starts from a clean tracker.
         var strategy = db.Database.CreateExecutionStrategy();
-        return strategy.ExecuteAsync(
-            work,
-            async (_, unit, ct) =>
+        for (var attempt = 1; ; attempt++)
+        {
+            try
             {
+                return await strategy.ExecuteAsync(
+                    work,
+                    async (_, unit, ct) =>
+                    {
+                        db.ChangeTracker.Clear();
+                        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+                        var result = await unit(ct);
+                        await transaction.CommitAsync(ct);
+                        return result;
+                    },
+                    verifySucceeded: null,
+                    cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < MaxConcurrencyAttempts)
+            {
+                // A job's xmin changed under this unit (a split, an ingestion or a
+                // reconcile committed first): nothing was saved, so run it again on
+                // fresh data rather than overwrite the other writer's change.
                 db.ChangeTracker.Clear();
-                await using var transaction = await db.Database.BeginTransactionAsync(ct);
-                var result = await unit(ct);
-                await transaction.CommitAsync(ct);
-                return result;
-            },
-            verifySucceeded: null,
-            cancellationToken);
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<string?> GetDedupKeyAsync(Guid jobId, CancellationToken cancellationToken)
+    {
+        var job = await db.Jobs.IgnoreQueryFilters().AsNoTracking()
+            .Where(j => j.Id == jobId)
+            .Select(j => new { j.DedupKey, j.Company, j.Title, j.Location })
+            .FirstOrDefaultAsync(cancellationToken);
+        return job is null ? null : job.DedupKey ?? JobDedupKey.For(job.Company, job.Title, job.Location);
     }
 
     /// <inheritdoc />

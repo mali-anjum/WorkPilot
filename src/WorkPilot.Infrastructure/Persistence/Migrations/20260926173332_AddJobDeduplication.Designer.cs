@@ -13,7 +13,7 @@ using WorkPilot.Infrastructure.Persistence;
 namespace WorkPilot.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(WorkPilotDbContext))]
-    [Migration("20260926134227_AddJobDeduplication")]
+    [Migration("20260926173332_AddJobDeduplication")]
     partial class AddJobDeduplication
     {
         /// <inheritdoc />
@@ -522,6 +522,12 @@ namespace WorkPilot.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 

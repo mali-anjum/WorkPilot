@@ -37,6 +37,17 @@ public partial class AddJobDeduplication : Migration
             type: "uuid",
             nullable: true);
 
+        // The row's xmin as a concurrency token: Npgsql knows it is a system
+        // column and adds nothing to the table.
+        migrationBuilder.AddColumn<uint>(
+            name: "xmin",
+            schema: "app",
+            table: "jobs",
+            type: "xid",
+            rowVersion: true,
+            nullable: false,
+            defaultValue: 0u);
+
         migrationBuilder.AddColumn<string>(
             name: "CompanyName",
             schema: "app",
@@ -191,6 +202,11 @@ public partial class AddJobDeduplication : Migration
 
         migrationBuilder.DropColumn(
             name: "PrimaryLinkId",
+            schema: "app",
+            table: "jobs");
+
+        migrationBuilder.DropColumn(
+            name: "xmin",
             schema: "app",
             table: "jobs");
 
