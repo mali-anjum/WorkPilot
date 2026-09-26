@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using WorkPilot.Domain.Modules.Jobs;
 using WorkPilot.Infrastructure.Modules.Jobs.Sources;
 
@@ -68,6 +69,53 @@ public class LeverJobSourceTests
     {
         // covers AC-6
         Assert.Null(new LeverJobSource(new HttpClient()).Describe(site));
+    }
+
+    [Theory]
+    [InlineData("""{"workplaceType":"remote","categories":{}}""", "Remote")]
+    [InlineData("""{"workplaceType":"remote","categories":{"location":"Remote - EU"}}""", "Remote - EU")]
+    [InlineData("""{"workplaceType":"on-site","categories":{"location":"Oslo"}}""", "Oslo")]
+    [InlineData("""{"categories":{}}""", null)]
+    public void Parse_AddsTheWorkplaceTypeOnlyWhenTheLocationDoesNotSayIt(string posting, string? expected)
+    {
+        // covers AC-6
+        using var doc = JsonDocument.Parse($"[{posting}]");
+
+        Assert.Equal(expected, Assert.Single(LeverJobSource.Parse(doc.RootElement, "hive")).LocationText);
+    }
+
+    [Fact]
+    public void Parse_OfABodyThatIsNotAnArray_Throws()
+    {
+        // covers AC-6: a bad body stores nothing (the run fails and is retried)
+        using var doc = JsonDocument.Parse("""{"ok":false}""");
+
+        Assert.Throws<JsonException>(() => LeverJobSource.Parse(doc.RootElement, "hive"));
+    }
+
+    [Fact]
+    public async Task FetchAsync_WhenTheSiteDoesNotExist_Throws()
+    {
+        // covers AC-6
+        var source = new LeverJobSource(new HttpClient(new StubHandler(HttpStatusCode.NotFound, "{}")) { BaseAddress = new Uri("https://lever.test/v0/") });
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => source.FetchAsync(LeverSource(companyName: null), CancellationToken.None));
+    }
+
+    [Fact]
+    public void Describe_LowercasesTheSiteIntoOneSourcePerSite()
+    {
+        // covers AC-6
+        var definition = new LeverJobSource(new HttpClient()).Describe("  Hive ");
+
+        Assert.Equal("lever:hive", definition!.Name);
+        Assert.Contains("\"site\":\"hive\"", definition.ConfigJson);
+    }
+
+    [Fact]
+    public void ParseStored_RejectsContentThatIsNotOnePosting()
+    {
+        Assert.Throws<JsonException>(() => new LeverJobSource(new HttpClient()).ParseStored(LeverSource(companyName: null), "[]"));
     }
 
     private static JobSource LeverSource(string? companyName) =>

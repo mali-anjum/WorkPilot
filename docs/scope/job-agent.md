@@ -20,7 +20,7 @@ The walking skeleton of the whole product: discover a real job, know why it matc
 
 `/test` (2026-09-24): 53 new tests, all passing (Domain 72/72, Api 59/59, Web 68/68). `tests/WorkPilot.Domain.Tests/JobIngestionTests.cs` (25, unit): normalizer whitespace, HTML and entity encoded HTML, remote detection, stable hash, keyword search, `Job.Create`/`Refresh` provenance and snapshot rules. `tests/WorkPilot.Api.Tests/JobIngestionTests.cs` (13, real Postgres, scripted `IJobSource`): stored jobs and audit row, keyword filter and skips, idempotent re-run and snapshot on change, source failure stores nothing, trigger 400s and find or create, read endpoint and 404. `tests/WorkPilot.Api.Tests/GreenhouseJobSourceTests.cs` (15): field mapping on a captured payload, fallbacks, malformed bodies, token validation, request URL, 404. Follow ups: recurring schedule, stale job closing, a second source, salary extraction (see the spec).
 
-### 10. Job deduplication · in-progress
+### 10. Job deduplication · done
 Same job from multiple sources collapses to one canonical Job with multiple source links, never duplicate applications.
 **Done when:** ingesting the same posting twice (from the same or a different source) produces one canonical Job, not two.
 - [x] Design it (spec): `/architect job deduplication` → [0017](../specs/0017-job-deduplication/index.md)
@@ -30,7 +30,7 @@ Same job from multiple sources collapses to one canonical Job with multiple sour
   - [x] `companyName` on the trigger with rename rematch, and the Lever source (AC-6, AC-7)
   - [x] `ReconcileJobsJob`, the read endpoints and the split endpoint (AC-8, AC-9, AC-12, AC-13)
 - [x] Verify it: `/check verify job deduplication`
-- [ ] Test it: `/test job deduplication`
+- [x] Test it: `/test job deduplication`
 - [x] Review it (fresh model): `/check review` → [review](../reviews/2026-09-26-feat-job-deduplication.md)
 - [x] Document it: `/document pr`
 

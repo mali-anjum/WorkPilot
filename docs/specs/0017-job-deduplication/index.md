@@ -1,7 +1,7 @@
 # 0017. Job deduplication across and within sources
 
 **Date**: 2026-09-26
-**Status**: In Progress
+**Status**: Accepted
 
 ## Summary
 
@@ -168,7 +168,7 @@ Decisions settled while writing (recommended, the engineer may override):
 4. [x] Trigger gains `companyName` (display and match company for every source; the rename rematch runs inside the ingestion job before the fetch), and the Lever `IJobSource` (with `ParseStored`) with its config and resilience pipeline. Satisfies **AC-6**, **AC-7**.
 5. [x] `ReconcileJobsJob` (Hangfire), one transaction per key group, enqueued on Api start when any job is stale and after a run that made one stale. It shares the group merge logic with the rename rematch. Satisfies **AC-9**, **AC-12**.
 6. [x] The read endpoints (the list's `sources`, `GET /internal/jobs/{id}`) and the split endpoint. Satisfies **AC-8**, **AC-13**.
-7. [ ] Integration tests on real Postgres (concurrency with two contexts, merge, split, reconcile, rename) (done: `JobDeduplicationTests`), and live verify with a real Greenhouse board plus a Lever site of the same company. Satisfies all.
+7. [x] Integration tests on real Postgres (concurrency with two contexts, merge, split, reconcile, rename) (done: `JobDeduplicationTests`), and live verify with a real Greenhouse board plus a Lever site of the same company. Satisfies all.
 
 ## Migration plan
 

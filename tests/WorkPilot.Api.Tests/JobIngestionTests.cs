@@ -174,6 +174,8 @@ public class JobIngestionTests(SharedApiFactory factory)
     [InlineData("""{"source":"greenhouse","boardToken":"../evil.test/x"}""")]
     [InlineData("""{"source":"greenhouse","boardToken":""}""")]
     [InlineData("""{"source":"greenhouse"}""")]
+    [InlineData("""{"source":"lever","boardToken":"../evil.test/x"}""")]
+    [InlineData("""{"source":"greenhouse","boardToken":"acme","companyName":"   "}""")]
     [InlineData("""{"boardToken":"acme"}""")]
     public async Task TriggerIngestion_WithAnUnknownSourceOrBadBoard_Returns400(string body)
     {
@@ -183,6 +185,34 @@ public class JobIngestionTests(SharedApiFactory factory)
         var response = await client.PostAsync("/internal/jobs/ingestions", new StringContent(body, System.Text.Encoding.UTF8, "application/json"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task TriggerIngestion_RejectsACompanyNameOver200Chars_AndAcceptsALeverSite()
+    {
+        // covers spec 0017, AC-6, AC-7: the name is validated before anything is stored
+        using var client = factory.CreateClient();
+        var site = $"wp-test-{Guid.NewGuid():N}"[..30];
+
+        var tooLong = await client.PostAsJsonAsync("/internal/jobs/ingestions", new { Source = "lever", BoardToken = site, CompanyName = new string('x', 201) });
+        var lever = await client.PostAsJsonAsync("/internal/jobs/ingestions", new { Source = "lever", BoardToken = site, CompanyName = new string('x', 200) });
+
+        Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, lever.StatusCode);
+        var body = await lever.Content.ReadFromJsonAsync<TriggerBody>();
+        try
+        {
+            await using var db = CreateDbContext();
+            var source = await db.JobSources.SingleAsync(s => s.Id == body!.JobSourceId);
+            Assert.Equal(("Lever", $"lever:{site}"), (source.Type, source.Name));
+
+            // The name is applied by the ingestion job, not stored by the trigger.
+            Assert.Null(source.CompanyName);
+        }
+        finally
+        {
+            await CleanupAsync(body!.JobSourceId);
+        }
     }
 
     [Fact]
