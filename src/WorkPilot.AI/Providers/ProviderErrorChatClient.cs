@@ -104,6 +104,9 @@ internal sealed partial class ProviderErrorChatClient(IChatClient innerClient, R
         return KeyLikePattern().Replace(text, "***");
     }
 
+    // A secondary net only: the exact configured key replaced above is the
+    // real defense. This knows just the sk- and AIza shapes, so a provider
+    // with another key format relies on that verbatim replace alone.
     [GeneratedRegex(@"\b(sk|AIza)[A-Za-z0-9_\-\*]{6,}")]
     private static partial Regex KeyLikePattern();
 }

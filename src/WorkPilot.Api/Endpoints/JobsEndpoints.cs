@@ -125,19 +125,20 @@ internal static class JobsEndpoints
                 j.Provenance.Confidence,
                 j.Snapshots.Count,
                 j.Links
-                    .OrderBy(l => l.FirstSeenAt)
-                    .ThenBy(l => l.Id)
-                    .Select(l => new JobLinkView(
-                        l.Id,
-                        l.JobSourceId,
-                        db.JobSources.Where(s => s.Id == l.JobSourceId).Select(s => s.Type).First(),
-                        l.ExternalId,
-                        l.SourceUrl,
-                        l.FirstSeenAt,
-                        l.LastSeenAt,
-                        l.Confidence,
-                        l.Id == j.PrimaryLinkId,
-                        l.SplitAt))
+                    .Join(db.JobSources, l => l.JobSourceId, s => s.Id, (l, s) => new { Link = l, SourceType = s.Type })
+                    .OrderBy(x => x.Link.FirstSeenAt)
+                    .ThenBy(x => x.Link.Id)
+                    .Select(x => new JobLinkView(
+                        x.Link.Id,
+                        x.Link.JobSourceId,
+                        x.SourceType,
+                        x.Link.ExternalId,
+                        x.Link.SourceUrl,
+                        x.Link.FirstSeenAt,
+                        x.Link.LastSeenAt,
+                        x.Link.Confidence,
+                        x.Link.Id == j.PrimaryLinkId,
+                        x.Link.SplitAt))
                     .ToList()))
             .FirstOrDefaultAsync(cancellationToken);
 
