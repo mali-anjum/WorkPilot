@@ -5,12 +5,12 @@ using WorkPilot.Web.Client.Shared;
 namespace WorkPilot.Web.Tests;
 
 // covers: AC-1, AC-2 (nav sections/sub items render, literal routes, active highlight)
-public class SidebarTests : TestContext
+public class SidebarTests : BunitContext
 {
     [Fact]
     public void Renders_all_five_section_labels()
     {
-        var cut = RenderComponent<Sidebar>();
+        var cut = Render<Sidebar>();
 
         var labels = cut.FindAll(".wp-sidebar__section-label").Select(e => e.TextContent);
 
@@ -20,7 +20,7 @@ public class SidebarTests : TestContext
     [Fact]
     public void Renders_all_twelve_links_with_their_literal_hrefs()
     {
-        var cut = RenderComponent<Sidebar>();
+        var cut = Render<Sidebar>();
 
         var links = cut.FindAll(".wp-sidebar__link");
 
@@ -32,7 +32,7 @@ public class SidebarTests : TestContext
     [Fact]
     public void Highlights_dashboard_as_active_on_the_root_route()
     {
-        var cut = RenderComponent<Sidebar>();
+        var cut = Render<Sidebar>();
 
         var dashboard = cut.FindAll(".wp-sidebar__link").Single(a => a.TextContent == "Dashboard");
 
@@ -42,7 +42,7 @@ public class SidebarTests : TestContext
     [Fact]
     public void Highlights_the_matching_link_after_navigating_and_clears_the_previous_one()
     {
-        var cut = RenderComponent<Sidebar>();
+        var cut = Render<Sidebar>();
         var nav = Services.GetRequiredService<NavigationManager>();
 
         nav.NavigateTo("jobs");

@@ -5,7 +5,7 @@ using WorkPilot.Web.Client.Shared;
 
 namespace WorkPilot.Web.Tests;
 
-public class CommandPaletteTests : TestContext
+public class CommandPaletteTests : BunitContext
 {
     public CommandPaletteTests()
     {
@@ -15,7 +15,7 @@ public class CommandPaletteTests : TestContext
     [Fact]
     public void Escape_closes_the_palette()
     {
-        var cut = RenderComponent<CommandPalette>(parameters => parameters
+        var cut = Render<CommandPalette>(parameters => parameters
             .Add(p => p.IsOpen, true));
 
         cut.Find("[role='dialog']").KeyDown(new KeyboardEventArgs { Key = "Escape" });
@@ -26,7 +26,7 @@ public class CommandPaletteTests : TestContext
     [Fact]
     public void OnShortcut_opens_the_palette()
     {
-        var cut = RenderComponent<CommandPalette>(parameters => parameters
+        var cut = Render<CommandPalette>(parameters => parameters
             .Add(p => p.IsOpen, false));
 
         cut.InvokeAsync(() => cut.Instance.OnShortcut());
@@ -37,7 +37,7 @@ public class CommandPaletteTests : TestContext
     [Fact]
     public void Renders_a_search_input_when_open()
     {
-        var cut = RenderComponent<CommandPalette>(parameters => parameters
+        var cut = Render<CommandPalette>(parameters => parameters
             .Add(p => p.IsOpen, true));
 
         Assert.NotNull(cut.Find("input[type='text']"));

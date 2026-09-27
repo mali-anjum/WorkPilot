@@ -32,8 +32,8 @@ public sealed class ApprovalCenterEndpointsTests : IAsyncLifetime
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Logging.ClearProviders();
-        builder.Services.AddAuthentication(HeaderAuthHandler.Scheme)
-            .AddScheme<AuthenticationSchemeOptions, HeaderAuthHandler>(HeaderAuthHandler.Scheme, null);
+        builder.Services.AddAuthentication(HeaderAuthHandler.SchemeName)
+            .AddScheme<AuthenticationSchemeOptions, HeaderAuthHandler>(HeaderAuthHandler.SchemeName, null);
         builder.Services.AddAuthorization();
         builder.Services.AddAntiforgery();
         builder.Services.AddSingleton<IApprovalCenterClient>(_client);
@@ -235,7 +235,7 @@ public sealed class ApprovalCenterEndpointsTests : IAsyncLifetime
     private sealed class HeaderAuthHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
         : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
     {
-        public const string Scheme = "TestSession";
+        public const string SchemeName = "TestSession";
         public const string Header = "X-Test-Profile";
 
         // Overrides the profile_id claim ("none" means no claim at all), to
@@ -256,8 +256,8 @@ public sealed class ApprovalCenterEndpointsTests : IAsyncLifetime
                 claims.Add(new Claim(PersistedAuthState.ProfileIdClaimType, profileClaim));
             }
 
-            var identity = new ClaimsIdentity(claims, Scheme);
-            return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme)));
+            var identity = new ClaimsIdentity(claims, SchemeName);
+            return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName)));
         }
     }
 }

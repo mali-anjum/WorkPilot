@@ -5,7 +5,7 @@ using WorkPilot.Web.Client.Shared;
 
 namespace WorkPilot.Web.Tests;
 
-public class ModalTests : TestContext
+public class ModalTests : BunitContext
 {
     public ModalTests()
     {
@@ -19,7 +19,7 @@ public class ModalTests : TestContext
     public void Escape_raises_OnClose_and_closes_the_modal()
     {
         var closed = false;
-        var cut = RenderComponent<Modal>(parameters => parameters
+        var cut = Render<Modal>(parameters => parameters
             .Add(p => p.IsOpen, true)
             .Add(p => p.Title, "Example")
             .Add(p => p.OnClose, () => closed = true)
@@ -34,7 +34,7 @@ public class ModalTests : TestContext
     [Fact]
     public void Renders_as_an_accessible_dialog_when_open()
     {
-        var cut = RenderComponent<Modal>(parameters => parameters
+        var cut = Render<Modal>(parameters => parameters
             .Add(p => p.IsOpen, true)
             .Add(p => p.Title, "Example")
             .AddChildContent("<p>Body</p>"));
@@ -46,7 +46,7 @@ public class ModalTests : TestContext
     [Fact]
     public void Renders_nothing_when_closed()
     {
-        var cut = RenderComponent<Modal>(parameters => parameters
+        var cut = Render<Modal>(parameters => parameters
             .Add(p => p.IsOpen, false)
             .Add(p => p.Title, "Example"));
 

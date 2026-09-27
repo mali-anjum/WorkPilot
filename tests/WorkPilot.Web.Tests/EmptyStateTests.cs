@@ -2,12 +2,12 @@ using WorkPilot.Web.Client.Shared;
 
 namespace WorkPilot.Web.Tests;
 
-public class EmptyStateTests : TestContext
+public class EmptyStateTests : BunitContext
 {
     [Fact]
     public void Renders_the_required_title()
     {
-        var cut = RenderComponent<EmptyState>(parameters => parameters
+        var cut = Render<EmptyState>(parameters => parameters
             .Add(p => p.Title, "No jobs yet"));
 
         Assert.Equal("No jobs yet", cut.Find(".wp-empty-state__title").TextContent);
@@ -16,7 +16,7 @@ public class EmptyStateTests : TestContext
     [Fact]
     public void Renders_the_description_when_given_one()
     {
-        var cut = RenderComponent<EmptyState>(parameters => parameters
+        var cut = Render<EmptyState>(parameters => parameters
             .Add(p => p.Title, "No jobs yet")
             .Add(p => p.Description, "New matches will show up here."));
 
@@ -26,7 +26,7 @@ public class EmptyStateTests : TestContext
     [Fact]
     public void Omits_the_description_element_when_none_is_given()
     {
-        var cut = RenderComponent<EmptyState>(parameters => parameters
+        var cut = Render<EmptyState>(parameters => parameters
             .Add(p => p.Title, "No jobs yet"));
 
         Assert.Empty(cut.FindAll(".wp-empty-state__description"));
@@ -35,7 +35,7 @@ public class EmptyStateTests : TestContext
     [Fact]
     public void Renders_the_icon_as_decorative_and_hidden_from_assistive_tech()
     {
-        var cut = RenderComponent<EmptyState>(parameters => parameters
+        var cut = Render<EmptyState>(parameters => parameters
             .Add(p => p.Title, "No jobs yet")
             .Add(p => p.Icon, "🗂"));
 
@@ -46,7 +46,7 @@ public class EmptyStateTests : TestContext
     [Fact]
     public void Omits_the_icon_element_when_none_is_given()
     {
-        var cut = RenderComponent<EmptyState>(parameters => parameters
+        var cut = Render<EmptyState>(parameters => parameters
             .Add(p => p.Title, "No jobs yet"));
 
         Assert.Empty(cut.FindAll(".wp-empty-state__icon"));
