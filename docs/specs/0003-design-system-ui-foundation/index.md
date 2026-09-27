@@ -2,6 +2,7 @@
 
 **Date**: 2026-09-21
 **Status**: Accepted
+**Amended by**: [0016](../0016-blazor-server-render-mode.md) (the app now renders InteractiveServer, not Auto; the Auto notes below are kept as history)
 
 ## Summary
 

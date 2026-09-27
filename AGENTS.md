@@ -8,7 +8,7 @@ Personal AI work execution system (finds and matches jobs/academic opportunities
 - **Framework**: .NET Aspire (orchestration) + Blazor Web App (InteractiveServer render mode, app wide; docs/specs/0016-blazor-server-render-mode) + ASP.NET Core backend
 - **Key dependencies**: EF Core (Npgsql), Hangfire (background jobs), Microsoft.Extensions.AI (`IChatClient`), Playwright for .NET
 - **Database**: PostgreSQL, self hosted via Supabase (Postgres + GoTrue auth + Storage, Docker Compose); EF Core owns only the product schema, never `auth.*`/`storage.*`
-- **Package manager**: NuGet (`dotnet` CLI)
+- **Package manager**: NuGet (`dotnet` CLI); every package version lives in `Directory.Packages.props` (central package management), so a `PackageReference` never carries a `Version`
 
 ## Build approach
 

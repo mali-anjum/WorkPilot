@@ -24,7 +24,7 @@ A data dense, dashboard style internal tool for a single user (the founder). Dar
 ## Component inventory
 
 **In scope, built (spec 0003):**
-- `AppShell` — the top level layout (sidebar + top bar + content), `@rendermode InteractiveAuto`. `src/WorkPilot.Web.Client/Shared/AppShell.razor`
+- `AppShell` — the top level layout (sidebar + top bar + content); interactive through the one InteractiveServer render mode set on `<Routes>` in `App.razor` (spec 0016). `src/WorkPilot.Web.Client/Shared/AppShell.razor`
 - `Sidebar` — the 5 top level nav sections and their sub items, from the hardcoded route map (`NavRoutes.cs`). `src/WorkPilot.Web.Client/Shared/Sidebar.razor`
 - `TopBar` — the theme toggle and the Cmd/Ctrl+K hint. `src/WorkPilot.Web.Client/Shared/TopBar.razor`
 - `PageHeader` — a page's title and description. `src/WorkPilot.Web.Client/Shared/PageHeader.razor`

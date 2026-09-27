@@ -29,3 +29,8 @@ This reworks job identity from `(JobSourceId, ExternalId)` on `Job` to a `JobSou
 
 ## Test coverage
 Strong and matches the spec's critical test scenarios almost one-for-one (AC-1 through AC-13 all have at least one automated test, per `verify.md`'s own accounting of 453 passing tests). The one gap is the split-created-multi-job tie-break noted above (Minor); the `MergeFrom`/`UpdatePrimary` dead branch noted above is intentionally defensive and not worth a test.
+
+## Resolution, minors and nits (2026-09-27 cleanup)
+- Minor, fixed earlier (08aec26): `After_a_split_a_new_posting_joins_the_oldest_live_job_on_the_key` covers the tie break.
+- Nit, fixed: `Job.MergeFrom` notes that `postingOf` is a defensive fallback there. Not changed in `UpdatePrimary`: that branch is reachable (the primary link seen again with a lower confidence), as its comment says.
+- Nit, fixed: `GetJobAsync` joins `job_sources` instead of a subquery per link.

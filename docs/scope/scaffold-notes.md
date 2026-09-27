@@ -12,7 +12,7 @@ WorkPilot.slnx
 src/
   WorkPilot.AppHost/            Aspire orchestration (Web + Api + Postgres)
   WorkPilot.ServiceDefaults/    OTel, health checks, service discovery
-  WorkPilot.Web/                Blazor Web App server host (render mode Auto)
+  WorkPilot.Web/                Blazor Web App server host (InteractiveServer, spec 0016)
   WorkPilot.Web.Client/         Blazor WebAssembly client project
   WorkPilot.Api/                ASP.NET Core backend host (Web layer), Hangfire dashboard
   WorkPilot.Application/        Application layer, Modules/<ModuleName>/README.md per module

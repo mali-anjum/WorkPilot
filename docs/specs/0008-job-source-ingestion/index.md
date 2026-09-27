@@ -2,6 +2,7 @@
 
 **Date**: 2026-09-24
 **Status**: Accepted
+**Amended by**: [0017](../0017-job-deduplication/index.md) (job identity moved to source links; `IJobIngestionRepository`/`JobIngestionRepository` renamed `IJobRepository`/`JobRepository`; Lever added as a second source)
 
 ## Summary
 
