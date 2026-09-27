@@ -27,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Upgraded bUnit to 2.11.3 in the Web tests, which drops the vulnerable AngleSharp 1.2.0.
 
 ### Fixed
-- The agent run job no longer crashes when an approval decision changes the same run at the same moment; it re-enqueues itself and runs again on fresh data.
+- The agent run job no longer crashes when an approval decision changes the same run at the same moment; it logs a warning and runs again on fresh data a second later.
+- A tool's outcome (its `ToolCall` and audit row) is now saved before the step status, so a crash between the two settles the step from that record instead of failing a tool that really succeeded or running it twice.
 - The Api now fails fast at startup when `ConnectionStrings:workpilotdb` is missing, instead of failing on first use.
 - `GET /health/db` now actually creates its database table on startup via EF Core migrations. It previously called `EnsureCreatedAsync`, which silently does nothing once the target Postgres database already exists (true here, since Supabase pre creates it), so the table was never created.
 - Fixed the Hangfire background worker server hanging on shutdown inside test hosts (`WebApplicationFactory`); the worker server can now be disabled independently of the dashboard/client registration.
