@@ -2,13 +2,13 @@ using WorkPilot.Web.Client.Shared;
 
 namespace WorkPilot.Web.Tests;
 
-public class ButtonTests : TestContext
+public class ButtonTests : BunitContext
 {
     [Fact]
     public void Click_raises_OnClick()
     {
         var clicked = false;
-        var cut = RenderComponent<Button>(parameters => parameters
+        var cut = Render<Button>(parameters => parameters
             .Add(p => p.OnClick, () => clicked = true)
             .AddChildContent("Click me"));
 
@@ -20,7 +20,7 @@ public class ButtonTests : TestContext
     [Fact]
     public void Disabled_button_has_the_disabled_attribute()
     {
-        var cut = RenderComponent<Button>(parameters => parameters
+        var cut = Render<Button>(parameters => parameters
             .Add(p => p.Disabled, true)
             .AddChildContent("Click me"));
 

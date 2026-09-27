@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 
 namespace WorkPilot.Api.Tests;
 
@@ -22,9 +23,9 @@ public class HealthDbEndpointTests(SharedApiFactory factory)
         var response = await client.GetAsync("/health/db");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("\"status\":\"ok\"", body);
-        Assert.Contains("\"profiles\":", body);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("ok", body.RootElement.GetProperty("status").GetString());
+        Assert.True(body.RootElement.GetProperty("profiles").GetInt32() >= 0);
     }
 
     [Fact]
@@ -35,5 +36,19 @@ public class HealthDbEndpointTests(SharedApiFactory factory)
         var response = await client.GetAsync("/hangfire");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task HangfireDashboard_RefusesARemoteCaller()
+    {
+        // The dashboard has no login yet, so only its local only filter keeps
+        // it private; this guards that the filter is still in place.
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/hangfire");
+        request.Headers.Add(LoopbackRemoteIpStartupFilter.RemoteIpHeader, "203.0.113.7");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Contains(response.StatusCode, new[] { HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden });
     }
 }

@@ -35,8 +35,8 @@ public sealed class ResumeFileEndpointTests : IAsyncLifetime
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Logging.ClearProviders();
-        builder.Services.AddAuthentication(HeaderAuthHandler.Scheme)
-            .AddScheme<AuthenticationSchemeOptions, HeaderAuthHandler>(HeaderAuthHandler.Scheme, null);
+        builder.Services.AddAuthentication(HeaderAuthHandler.SchemeName)
+            .AddScheme<AuthenticationSchemeOptions, HeaderAuthHandler>(HeaderAuthHandler.SchemeName, null);
         builder.Services.AddAuthorization();
         builder.Services.AddSingleton<IResumesApiClient>(_api);
 
@@ -155,7 +155,7 @@ public sealed class ResumeFileEndpointTests : IAsyncLifetime
     private sealed class HeaderAuthHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
         : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
     {
-        public const string Scheme = "TestSession";
+        public const string SchemeName = "TestSession";
         public const string Header = "X-Test-Profile-Claim";
 
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
@@ -171,8 +171,8 @@ public sealed class ResumeFileEndpointTests : IAsyncLifetime
                 claims.Add(new Claim(PersistedAuthState.ProfileIdClaimType, value.ToString()));
             }
 
-            var identity = new ClaimsIdentity(claims, Scheme);
-            return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme)));
+            var identity = new ClaimsIdentity(claims, SchemeName);
+            return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName)));
         }
     }
 }

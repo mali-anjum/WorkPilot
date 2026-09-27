@@ -66,7 +66,7 @@ The pages were always server pages. Auto only added a failure mode, not a benefi
 ## Follow-up
 
 - Decide whether to remove the unused WebAssembly half (`WorkPilot.Web.Client` hosting, `AddInteractiveWebAssemblyComponents`, the auth state serialization) to shrink the download. Only worth it if nothing needs it.
-- /sync: the root `AGENTS.md` stack line still says "Blazor Web App (Auto render mode)".
+- Done (2026-09-26, /sync): the root `AGENTS.md` stack line now says InteractiveServer.
 
 ## References
 

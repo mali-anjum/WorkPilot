@@ -2,6 +2,7 @@ using System.Text.Json;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using WorkPilot.Application.Modules.Agent;
 using WorkPilot.Domain.Modules.Agent;
 using WorkPilot.Domain.Modules.Approvals;
@@ -489,6 +490,96 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
         }
     }
 
+    [Fact]
+    public async Task RunAsync_WhenAnotherWriterChangesTheRunMidStep_ReenqueuesAndLaterSettlesOnFreshData()
+    {
+        // covers AC-10: a concurrent change to the run (its xmin token) must not
+        // crash the job or be overwritten; the job re-enqueues itself instead,
+        // and the rerun settles from the recorded outcome without running the
+        // tool again.
+        var (tool, runId, profileId, stepId, firstPassJobs) = await RaceOneStepAsync();
+
+        try
+        {
+            var (_, rerun) = CreateJob(tool);
+            await rerun.RunAsync(runId);
+
+            await using var verifyDb = CreateDbContext();
+            Assert.Equal(AgentRunStatus.Failed, (await verifyDb.AgentRuns.SingleAsync(r => r.Id == runId)).Status);
+            Assert.Equal(AgentStepStatus.Failed, (await verifyDb.AgentSteps.SingleAsync(s => s.Id == stepId)).Status);
+            Assert.Equal(1, tool.AttemptCount);
+            Assert.Single(firstPassJobs.Created);
+        }
+        finally
+        {
+            await CleanupAsync(profileId);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenAStepWasLeftRunningAfterItsToolCallWasRecorded_SettlesFromTheRecordWithoutRerunning()
+    {
+        // covers AC-9: the tool's outcome is committed before the step status,
+        // so a process that died between the two must not turn a real success
+        // into a failure (nor run a non-idempotent side effect again).
+        var tool = new ScriptedTool("side_effect", isIdempotent: false, maxRetries: 0, ScriptedTool.Behavior.AlwaysSucceed);
+        var (db, job) = CreateJob(tool);
+        var (run, step, profileId) = await SeedRunningRunAsync(db, tool.Name);
+        db.ToolCalls.Add(new ToolCall { AgentStepId = step.Id, ToolName = tool.Name, Success = true });
+        await db.SaveChangesAsync();
+
+        try
+        {
+            await job.RunAsync(run.Id);
+
+            await using var verifyDb = CreateDbContext();
+            Assert.Equal(AgentStepStatus.Succeeded, (await verifyDb.AgentSteps.SingleAsync(s => s.Id == step.Id)).Status);
+            Assert.NotEqual(AgentRunStatus.Failed, (await verifyDb.AgentRuns.SingleAsync(r => r.Id == run.Id)).Status);
+            Assert.Single(await verifyDb.ToolCalls.Where(c => c.AgentStepId == step.Id).ToListAsync());
+            Assert.Equal(0, tool.AttemptCount);
+        }
+        finally
+        {
+            await CleanupAsync(profileId);
+        }
+    }
+
+    // Runs one pass of a single step run whose tool changes the run from
+    // another connection while it executes, so the status save after the tool
+    // hits a concurrency conflict. Asserts the pass re-enqueued itself and left
+    // the step Running, then hands back what the caller needs to rerun it.
+    private async Task<(InterferingTool Tool, Guid RunId, Guid ProfileId, Guid StepId, RecordingJobClient Jobs)> RaceOneStepAsync()
+    {
+        Guid runId = default;
+        var interfered = false;
+        var tool = new InterferingTool(async () =>
+        {
+            if (interfered)
+            {
+                return;
+            }
+
+            interfered = true;
+            await using var other = CreateDbContext();
+            await other.Database.ExecuteSqlInterpolatedAsync($"UPDATE app.agent_runs SET \"Goal\" = \"Goal\" WHERE \"Id\" = {runId}");
+        });
+        var jobs = new RecordingJobClient();
+        var db = CreateDbContext();
+        var job = new AdvanceRunJob(db, new ToolRegistry([tool]), new VerificationEngine(), new AuditService(db), jobs, NullLogger<AdvanceRunJob>.Instance);
+        var (run, step, profileId) = await SeedPendingRunAsync(db, tool.Name);
+        runId = run.Id;
+
+        await job.RunAsync(run.Id);
+
+        var retry = Assert.Single(jobs.Created);
+        Assert.Equal(nameof(AdvanceRunJob.RunAsync), retry.Method.Name);
+        Assert.Equal(run.Id, retry.Args[0]);
+        await using var afterConflict = CreateDbContext();
+        Assert.Equal(AgentRunStatus.Executing, (await afterConflict.AgentRuns.SingleAsync(r => r.Id == run.Id)).Status);
+        Assert.Equal(AgentStepStatus.Running, (await afterConflict.AgentSteps.SingleAsync(s => s.Id == step.Id)).Status);
+        return (tool, run.Id, profileId, step.Id, jobs);
+    }
+
     private (WorkPilotDbContext Db, AdvanceRunJob Job) CreateJob(params ITool[] tools)
     {
         var db = CreateDbContext();
@@ -496,7 +587,7 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
         var verification = new VerificationEngine();
         var audit = new AuditService(db);
         var jobs = factory.Services.CreateScope().ServiceProvider.GetRequiredService<IBackgroundJobClient>();
-        return (db, new AdvanceRunJob(db, registry, verification, audit, jobs));
+        return (db, new AdvanceRunJob(db, registry, verification, audit, jobs, NullLogger<AdvanceRunJob>.Instance));
     }
 
     private WorkPilotDbContext CreateDbContext() =>
@@ -596,6 +687,43 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
             AttemptCount++;
             return Task.FromResult(ToolExecutionResult.Ok(null));
         }
+    }
+
+    // An idempotent tool that always fails, and runs a side action first (the
+    // test uses it to change the run from another connection mid step).
+    private sealed class InterferingTool(Func<Task> beforeResult) : ITool
+    {
+        public string Name => "interfering";
+        public string Description => "test tool that races the job";
+        public IReadOnlyList<string> RequiredArguments => [];
+        public IReadOnlyList<string> ExpectedOutputFields => [];
+        public ToolRiskTier RiskTier => ToolRiskTier.AutoAllowed;
+        public bool IsIdempotent => true;
+        public TimeSpan Timeout => TimeSpan.FromSeconds(5);
+        public int MaxRetries => 0;
+        public string? TargetType => null;
+        public int AttemptCount { get; private set; }
+
+        public async Task<ToolExecutionResult> ExecuteAsync(ToolExecutionContext context, CancellationToken cancellationToken)
+        {
+            AttemptCount++;
+            await beforeResult();
+            return ToolExecutionResult.Fail("scripted failure");
+        }
+    }
+
+    // Records enqueued jobs instead of storing them, so a test can see a re-enqueue.
+    private sealed class RecordingJobClient : IBackgroundJobClient
+    {
+        public List<Hangfire.Common.Job> Created { get; } = [];
+
+        public string Create(Hangfire.Common.Job job, Hangfire.States.IState state)
+        {
+            Created.Add(job);
+            return Created.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        public bool ChangeState(string jobId, Hangfire.States.IState state, string expectedState) => true;
     }
 
     // A controllable ITool double: scripted to always succeed or always fail,

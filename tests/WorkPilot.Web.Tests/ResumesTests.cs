@@ -15,7 +15,7 @@ namespace WorkPilot.Web.Tests;
 // AC-7, AC-9), rendered with a fake IResumesApiClient standing in for the
 // internal Api and a signed in session carrying the profile_id claim. The
 // real Api behavior is covered in Api.Tests/ResumeEndpointsTests.
-public class ResumesTests : TestContext
+public class ResumesTests : BunitContext
 {
     private static readonly Guid ProfileId = Guid.Parse("01a0da9c-0d42-7000-8000-000000000001");
     private static readonly DateTimeOffset At = new(2026, 9, 26, 9, 0, 0, TimeSpan.Zero);
@@ -29,7 +29,7 @@ public class ResumesTests : TestContext
 
     private void SignIn(Guid? profileId = null)
     {
-        var auth = this.AddTestAuthorization();
+        var auth = this.AddAuthorization();
         auth.SetAuthorized("founder@example.com");
         auth.SetClaims(new Claim(PersistedAuthState.ProfileIdClaimType, (profileId ?? ProfileId).ToString()));
     }
@@ -47,7 +47,7 @@ public class ResumesTests : TestContext
     {
         SignIn();
 
-        var cut = RenderComponent<Resumes>();
+        var cut = Render<Resumes>();
 
         Assert.Equal("No resumes yet", cut.Find(".wp-empty-state__title").TextContent);
         Assert.Equal([ProfileId], _api.ListedFor);
@@ -65,7 +65,7 @@ public class ResumesTests : TestContext
             new(Guid.NewGuid(), "Acme resume", "Tailored", "Acme", 1, false, 1, At),
         ];
 
-        var cut = RenderComponent<Resumes>();
+        var cut = Render<Resumes>();
 
         var items = cut.FindAll(".wp-resumes__item");
         Assert.Equal(2, items.Count);
@@ -83,7 +83,7 @@ public class ResumesTests : TestContext
         SignIn();
         var created = Detail(Version(1));
         _api.CreateResult = new(created, null);
-        var cut = RenderComponent<Resumes>();
+        var cut = Render<Resumes>();
 
         cut.Find("input[required]").Change("General resume");
         cut.Find("textarea").Change("Experience: C#");
@@ -99,7 +99,7 @@ public class ResumesTests : TestContext
     {
         SignIn();
         _api.CreateResult = new(null, "The name must be 1 to 200 characters.");
-        var cut = RenderComponent<Resumes>();
+        var cut = Render<Resumes>();
 
         cut.Find("form").Submit();
 
@@ -111,10 +111,10 @@ public class ResumesTests : TestContext
     [Fact]
     public void List_without_a_profile_claim_asks_to_sign_in_again_and_calls_nothing()
     {
-        var auth = this.AddTestAuthorization();
+        var auth = this.AddAuthorization();
         auth.SetAuthorized("founder@example.com");
 
-        var cut = RenderComponent<Resumes>();
+        var cut = Render<Resumes>();
 
         Assert.Contains("sign in again", cut.Find("[role=alert]").TextContent);
         Assert.Empty(_api.ListedFor);
@@ -126,7 +126,7 @@ public class ResumesTests : TestContext
     {
         SignIn();
 
-        var cut = RenderComponent<ResumeDetail>(p => p.Add(x => x.Id, Guid.NewGuid()));
+        var cut = Render<ResumeDetail>(p => p.Add(x => x.Id, Guid.NewGuid()));
 
         Assert.Equal("This resume doesn't exist", cut.Find(".wp-empty-state__title").TextContent);
     }
@@ -142,7 +142,7 @@ public class ResumesTests : TestContext
         var resume = Detail(v2, v1);
         _api.Details[resume.Id] = resume;
 
-        var cut = RenderComponent<ResumeDetail>(p => p.Add(x => x.Id, resume.Id));
+        var cut = Render<ResumeDetail>(p => p.Add(x => x.Id, resume.Id));
 
         var versions = cut.FindAll(".wp-resumes__version");
         Assert.Equal(["2", "1"], versions.Select(v => v.GetAttribute("data-version")));
@@ -164,7 +164,7 @@ public class ResumesTests : TestContext
         var resume = Detail(Version(1));
         _api.Details[resume.Id] = resume;
 
-        var cut = RenderComponent<ResumeDetail>(p => p.Add(x => x.Id, resume.Id));
+        var cut = Render<ResumeDetail>(p => p.Add(x => x.Id, resume.Id));
 
         Assert.Contains("v1 is a draft. Saving updates it in place", cut.Markup);
     }
@@ -177,7 +177,7 @@ public class ResumesTests : TestContext
         var resume = Detail(Version(1, locked: true));
         _api.Details[resume.Id] = resume;
 
-        var cut = RenderComponent<ResumeDetail>(p => p.Add(x => x.Id, resume.Id));
+        var cut = Render<ResumeDetail>(p => p.Add(x => x.Id, resume.Id));
 
         Assert.Contains("v1 was used by an application and is locked. Saving creates v2.", cut.Markup);
     }
@@ -192,7 +192,7 @@ public class ResumesTests : TestContext
         _api.Details[resume.Id] = resume;
         var v2 = Version(2, content: "Rewritten");
         _api.ReviseResult = new(new ReviseResumeResultDto("CreatedVersion", 2, resume with { Versions = [v2, v1] }), null);
-        var cut = RenderComponent<ResumeDetail>(p => p.Add(x => x.Id, resume.Id));
+        var cut = Render<ResumeDetail>(p => p.Add(x => x.Id, resume.Id));
 
         cut.Find("textarea").Change("Rewritten");
         cut.FindAll("form")[0].Submit();
@@ -210,7 +210,7 @@ public class ResumesTests : TestContext
         var resume = Detail(Version(1));
         _api.Details[resume.Id] = resume;
         _api.ReviseResult = new(null, "This version was just locked by an application. Reload and save again to create a new version.");
-        var cut = RenderComponent<ResumeDetail>(p => p.Add(x => x.Id, resume.Id));
+        var cut = Render<ResumeDetail>(p => p.Add(x => x.Id, resume.Id));
 
         cut.FindAll("form")[0].Submit();
 
@@ -227,7 +227,7 @@ public class ResumesTests : TestContext
         _api.Details[resume.Id] = resume;
         var tailored = Detail(Version(1)) with { Kind = "Tailored", TargetCompany = "Acme" };
         _api.TailorResult = new(tailored, null);
-        var cut = RenderComponent<ResumeDetail>(p => p.Add(x => x.Id, resume.Id));
+        var cut = Render<ResumeDetail>(p => p.Add(x => x.Id, resume.Id));
 
         var tailorForm = cut.FindAll("form")[1];
         tailorForm.QuerySelectorAll("input")[0].Change("Acme");

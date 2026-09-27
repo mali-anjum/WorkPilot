@@ -39,3 +39,6 @@ This change replaces `FakeChatClient` as the hardwired AI client with a config-d
 
 ## Test coverage
 Strong overall: AC-1 through AC-9 each have direct, purpose-built tests (config-only provider switching, Default fallback, Fake keyless path, every AC-4 validation branch, retry/timeout/non-retry behavior, key redaction including a Gemini-shaped key the regex doesn't recognize, telemetry with/without sensitive data, fenced-JSON parsing, and both `/health/ai` outcomes). The one gap is `ProviderErrorChatClient.GetStreamingResponseAsync`, called out above as a Major — it's new logic with no test anywhere touching it.
+
+## Resolution, nits (2026-09-27 cleanup)
+- Nit, fixed: `KeyLikePattern` now carries a comment that it is a secondary net behind the verbatim key replace.

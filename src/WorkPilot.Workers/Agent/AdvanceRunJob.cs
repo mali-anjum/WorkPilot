@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using WorkPilot.Application.Modules.Agent;
 using WorkPilot.Domain.Modules.Agent;
 using WorkPilot.Domain.Modules.Approvals;
@@ -21,14 +22,39 @@ public sealed class AdvanceRunJob(
     IToolRegistry registry,
     IVerificationEngine verification,
     IAuditService audit,
-    IBackgroundJobClient jobs)
+    IBackgroundJobClient jobs,
+    ILogger<AdvanceRunJob> logger)
 {
+    // How long a pass that lost a race waits before it runs again, so a
+    // conflict that keeps recurring is a slow, logged loop, not a tight one.
+    private static readonly TimeSpan ConflictRetryDelay = TimeSpan.FromSeconds(1);
+
     // Hangfire's own automatic retry would re-run this job at least once more
     // on failure, which is exactly the double-execution risk this job's own
     // AgentStep.Status-driven logic exists to prevent; disabling it keeps
     // exactly one recovery mechanism, not two disagreeing ones.
     [AutomaticRetry(Attempts = 0)]
     public async Task RunAsync(Guid agentRunId)
+    {
+        try
+        {
+            await AdvanceAsync(agentRunId);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Another writer (an approval decision) changed this run between
+            // our read and our save (spec 0005, AC-10). Only the save that
+            // conflicted is lost: an earlier save of this pass (the Running
+            // commit, a recorded ToolCall) stays committed. Drop the rest and
+            // run again on fresh data; the step status cursor and the recorded
+            // ToolCall make the rerun safe, exactly as after a crash.
+            logger.LogWarning("Agent run {AgentRunId} changed underneath its advance; running it again on fresh data.", agentRunId);
+            db.ChangeTracker.Clear();
+            jobs.Schedule<AdvanceRunJob>(j => j.RunAsync(agentRunId), ConflictRetryDelay);
+        }
+    }
+
+    private async Task AdvanceAsync(Guid agentRunId)
     {
         var run = await db.AgentRuns
             .Include(r => r.Steps.OrderBy(s => s.Ordinal))
@@ -55,6 +81,23 @@ public sealed class AdvanceRunJob(
             // run (a deploy), not a normal path.
             await FailStepAndRunAsync(run, next);
             return;
+        }
+
+        if (next.Status is AgentStepStatus.Running)
+        {
+            // The tool already ran and its outcome is on record: a later save
+            // of that pass was lost (a crash, or a concurrency conflict), so
+            // settle the step from the record instead of running the tool again
+            // or failing a step whose tool really succeeded.
+            var recorded = await db.ToolCalls
+                .Where(c => c.AgentStepId == next.Id)
+                .OrderByDescending(c => c.Id)
+                .FirstOrDefaultAsync();
+            if (recorded is not null)
+            {
+                await SettleAsync(run, next, recorded.Success);
+                return;
+            }
         }
 
         switch (next.Status)
@@ -132,19 +175,25 @@ public sealed class AdvanceRunJob(
         // it has to be wrapped as JSON before it can land in that column.
         var payload = result.OutputJson ?? (result.Error is null ? null : JsonSerializer.Serialize(new { error = result.Error }));
         audit.Record("Agent", tool.Name, tool.TargetType ?? ApprovalTargets.AgentStep, result.TargetId ?? next.Id, payload);
+        // The outcome is committed on its own, before any status change: these
+        // are inserts only (no concurrency token), so a conflict on the status
+        // save below can never erase the record that the tool really ran.
+        await db.SaveChangesAsync();
 
-        if (verified)
+        await SettleAsync(run, next, verified);
+    }
+
+    private async Task SettleAsync(AgentRun run, AgentStep step, bool succeeded)
+    {
+        if (succeeded)
         {
-            next.TransitionTo(AgentStepStatus.Succeeded);
+            step.TransitionTo(AgentStepStatus.Succeeded);
             await db.SaveChangesAsync();
             jobs.Enqueue<AdvanceRunJob>(j => j.RunAsync(run.Id));
         }
         else
         {
-            next.TransitionTo(AgentStepStatus.Failed);
-            run.TransitionTo(AgentRunStatus.Failed);
-            await WorkflowMirror.SyncAsync(db, run, CancellationToken.None);
-            await db.SaveChangesAsync();
+            await FailStepAndRunAsync(run, step);
         }
     }
 

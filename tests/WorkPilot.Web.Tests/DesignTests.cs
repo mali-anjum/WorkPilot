@@ -3,7 +3,7 @@ using WorkPilot.Web.Components.Pages;
 namespace WorkPilot.Web.Tests;
 
 // covers: AC-3 (all 10 in-scope components live on /design)
-public class DesignTests : TestContext
+public class DesignTests : BunitContext
 {
     public DesignTests()
     {
@@ -14,7 +14,7 @@ public class DesignTests : TestContext
     [Fact]
     public void Renders_a_card_for_every_in_scope_component()
     {
-        var cut = RenderComponent<Design>();
+        var cut = Render<Design>();
 
         var cardTitles = cut.FindAll(".wp-card__title").Select(e => e.TextContent);
 
@@ -34,7 +34,7 @@ public class DesignTests : TestContext
     [Fact]
     public void The_example_modal_starts_closed_and_opens_on_click()
     {
-        var cut = RenderComponent<Design>();
+        var cut = Render<Design>();
 
         Assert.Empty(cut.FindAll("[role='dialog']"));
 

@@ -13,7 +13,7 @@ namespace WorkPilot.Web.Tests;
 // The Approval center page (spec 0007, AC-5, AC-6), rendered with a fake
 // IApprovalCenterClient standing in for the internal Api and a signed in
 // session carrying the profile_id claim.
-public class ApprovalsTests : TestContext
+public class ApprovalsTests : BunitContext
 {
     private static readonly Guid ProfileId = Guid.Parse("01a0d8e5-086b-7f22-9936-3a2a10cec6f8");
     private static readonly DateTimeOffset At = new(2026, 9, 25, 14, 12, 0, TimeSpan.Zero);
@@ -28,7 +28,7 @@ public class ApprovalsTests : TestContext
 
     private void SignIn(Guid? profileId)
     {
-        var auth = this.AddTestAuthorization();
+        var auth = this.AddAuthorization();
         auth.SetAuthorized("founder@example.com");
         if (profileId is { } id)
         {
@@ -51,7 +51,7 @@ public class ApprovalsTests : TestContext
     {
         SignIn(ProfileId);
 
-        var cut = RenderComponent<Approvals>();
+        var cut = Render<Approvals>();
 
         Assert.Equal("Approvals", cut.Find("h1").TextContent);
         Assert.Equal("Nothing pending", cut.Find(".wp-empty-state__title").TextContent);
@@ -65,7 +65,7 @@ public class ApprovalsTests : TestContext
     {
         SignIn(ProfileId);
 
-        RenderComponent<Approvals>();
+        Render<Approvals>();
 
         Assert.Equal([ProfileId], _client.Requested);
     }
@@ -84,7 +84,7 @@ public class ApprovalsTests : TestContext
             arguments: new Dictionary<string, string> { ["jobId"] = "123" });
         _client.View = new ApprovalCenterDto([approval], []);
 
-        var cut = RenderComponent<Approvals>();
+        var cut = Render<Approvals>();
 
         var card = cut.Find($"article[data-approval-id='{approval.ApprovalId}']");
         Assert.Equal("approval_required_demo", card.QuerySelector("h3")!.TextContent);
@@ -110,7 +110,7 @@ public class ApprovalsTests : TestContext
         SignIn(ProfileId);
         _client.View = new ApprovalCenterDto([Pending()], []);
 
-        var cut = RenderComponent<Approvals>();
+        var cut = Render<Approvals>();
 
         Assert.Contains("This tool gave no extra evidence", cut.Markup);
         Assert.Contains("Not specified by the tool", cut.Markup);
@@ -126,7 +126,7 @@ public class ApprovalsTests : TestContext
         var approval = Pending();
         _client.View = new ApprovalCenterDto([approval], []);
 
-        var cut = RenderComponent<Approvals>();
+        var cut = Render<Approvals>();
 
         var forms = cut.FindAll("form");
         Assert.Equal(2, forms.Count);
@@ -151,7 +151,7 @@ public class ApprovalsTests : TestContext
         var approval = Pending("explicit_confirmation_demo", "ExplicitConfirmation", confirmationPhrase: "explicit_confirmation_demo");
         _client.View = new ApprovalCenterDto([approval], []);
 
-        var cut = RenderComponent<Approvals>();
+        var cut = Render<Approvals>();
 
         Assert.Contains("Explicit confirmation", cut.Find("article").TextContent);
         var input = cut.Find("input[name='confirmation']");
@@ -173,7 +173,7 @@ public class ApprovalsTests : TestContext
             new DecidedApprovalDto(Guid.NewGuid(), "approval_required_demo", "apply to Acme", "ApprovalRequired", "Rejected", At, ProfileId, false),
         ]);
 
-        var cut = RenderComponent<Approvals>();
+        var cut = Render<Approvals>();
 
         var rows = cut.FindAll(".wp-approvals__recent tbody tr");
         Assert.Equal(2, rows.Count);
@@ -197,7 +197,7 @@ public class ApprovalsTests : TestContext
         SignIn(ProfileId);
         Services.GetRequiredService<NavigationManager>().NavigateTo($"/approvals?outcome={outcome}");
 
-        var cut = RenderComponent<Approvals>();
+        var cut = Render<Approvals>();
 
         Assert.Contains(expected, cut.Find("[role='status']").TextContent);
     }
@@ -208,7 +208,7 @@ public class ApprovalsTests : TestContext
         SignIn(ProfileId);
         Services.GetRequiredService<NavigationManager>().NavigateTo("/approvals?outcome=<script>");
 
-        var cut = RenderComponent<Approvals>();
+        var cut = Render<Approvals>();
 
         Assert.Empty(cut.FindAll("[role='status']"));
     }
@@ -219,7 +219,7 @@ public class ApprovalsTests : TestContext
         SignIn(ProfileId);
         _client.ThrowOnGet = true;
 
-        var cut = RenderComponent<Approvals>();
+        var cut = Render<Approvals>();
 
         Assert.Contains("couldn't be loaded", cut.Find("[role='alert']").TextContent);
         Assert.Empty(cut.FindAll("form"));
@@ -230,7 +230,7 @@ public class ApprovalsTests : TestContext
     {
         SignIn(profileId: null);
 
-        var cut = RenderComponent<Approvals>();
+        var cut = Render<Approvals>();
 
         Assert.NotNull(cut.Find("[role='alert']"));
         Assert.Empty(_client.Requested);

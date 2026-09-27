@@ -3,7 +3,7 @@
 Everything later features stand on: the stack, the shared data model, the design system, the app shell, and the agent orchestrator's core machinery (planner, policy, tools, workflow, approvals, verification). Nothing in Slice 1 starts until the walking skeleton here boots.
 
 ### 1. Stack & architecture · done
-.NET Aspire modular monolith (Blazor Web App, Auto render mode, ASP.NET Core backend, EF Core) sharing one self hosted Supabase Postgres database (Supabase owns auth/storage/simple CRUD, the .NET backend owns the Agent/workflows/approvals/browser automation), Hangfire for durable jobs, Playwright for browser automation, Microsoft.Extensions.AI for the provider abstraction, all self hosted on one VPS via Docker Compose.
+.NET Aspire modular monolith (Blazor Web App, Auto render mode (since changed to InteractiveServer by spec 0016), ASP.NET Core backend, EF Core) sharing one self hosted Supabase Postgres database (Supabase owns auth/storage/simple CRUD, the .NET backend owns the Agent/workflows/approvals/browser automation), Hangfire for durable jobs, Playwright for browser automation, Microsoft.Extensions.AI for the provider abstraction, all self hosted on one VPS via Docker Compose.
 **Done when:** the stack is recorded in a spec, the empty scaffold boots locally (`dotnet build` + `aspire run`), and the modular monolith module boundaries (Identity, Profile, Jobs, Applications, Universities, Outreach, Calendar, Tasks, Agent, Approvals, Integrations, Notifications, Audit) are reflected in the folder structure.
 - [x] Decide the stack (spec): `/architect stack & architecture`
 - [x] Build it: `/develop stack & architecture`
@@ -21,6 +21,8 @@ Spec 0001 · code in `./`
 - Major: the `Hangfire:DisableServer` test-only flag failed silently toward "no background processing". Added an explicit startup warning log when it's set.
 - Major: EF Core's tables were landing in Postgres's shared `public` schema (what Supabase's future PostgREST layer exposes by default), contradicting the DbContext's own doc comment. Added `modelBuilder.HasDefaultSchema("app")` and regenerated the `InitialCreate` migration.
 Remaining minors/nits (env var test isolation, no negative test for dashboard auth, brittle JSON string assertions, centralizing package versions) are left for the "Coding standards & tooling" scope item or a future pass; not release blockers.
+**Cleanup (2026-09-27): all four minors closed.** The tests pin their env vars in `SharedApiFactory`; `HangfireDashboard_RefusesARemoteCaller` proves a non local caller is refused; `/health/db` asserts parse the JSON; every package version now lives in `Directory.Packages.props` (central package management).
+- [ ] Before any deploy beyond localhost: put the Hangfire dashboard behind the app's sign in (today only its default local only filter protects `/hangfire`).
 
 **/test (2026-09-20): PASS, 2/2.** `tests/WorkPilot.Api.Tests` (xUnit + `WebApplicationFactory<Program>`), scoped to the one real integration point in the scaffold — `GET /health/db` (EF Core round-trip) and `GET /hangfire` (dashboard reachability) — since the rest of the scaffold is framework boilerplate with no behavior worth locking in yet. Run against the real self hosted Supabase Postgres (port 5433), not a mock:
 ```

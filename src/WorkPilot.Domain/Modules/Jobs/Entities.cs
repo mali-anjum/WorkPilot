@@ -180,6 +180,8 @@ public class Job : SoftDeletableEntity
         other.Links.Clear();
         other.Snapshots.Clear();
 
+        // Each job's primary is already its best link, so the merged best is
+        // one of the two primaries; postingOf is a defensive fallback only.
         var best = RankLinks().First();
         if (best.Id != PrimaryLinkId)
         {
