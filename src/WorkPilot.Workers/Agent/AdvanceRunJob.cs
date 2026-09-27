@@ -30,6 +30,23 @@ public sealed class AdvanceRunJob(
     [AutomaticRetry(Attempts = 0)]
     public async Task RunAsync(Guid agentRunId)
     {
+        try
+        {
+            await AdvanceAsync(agentRunId);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Another writer (an approval decision) changed this run between
+            // our read and our save (spec 0005, AC-10). Nothing of this pass
+            // was committed, so drop it and run again on fresh data; the step
+            // status cursor makes the rerun safe, exactly as after a crash.
+            db.ChangeTracker.Clear();
+            jobs.Enqueue<AdvanceRunJob>(j => j.RunAsync(agentRunId));
+        }
+    }
+
+    private async Task AdvanceAsync(Guid agentRunId)
+    {
         var run = await db.AgentRuns
             .Include(r => r.Steps.OrderBy(s => s.Ordinal))
             .FirstOrDefaultAsync(r => r.Id == agentRunId);

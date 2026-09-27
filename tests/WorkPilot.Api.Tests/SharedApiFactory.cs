@@ -11,14 +11,18 @@ namespace WorkPilot.Api.Tests;
 // Hangfire's default dashboard filter (which correctly restricts /hangfire to
 // local requests) always sees a non-local caller. This simulates what every
 // real local/loopback request actually looks like, rather than loosening the
-// dashboard's real authorization for the sake of the test.
+// dashboard's real authorization for the sake of the test. A test can send
+// the RemoteIpHeader to act as a remote caller instead.
 internal sealed class LoopbackRemoteIpStartupFilter : IStartupFilter
 {
+    public const string RemoteIpHeader = "X-Test-Remote-Ip";
+
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
     {
         app.Use(async (context, nextMiddleware) =>
         {
-            context.Connection.RemoteIpAddress = IPAddress.Loopback;
+            context.Connection.RemoteIpAddress =
+                context.Request.Headers.TryGetValue(RemoteIpHeader, out var ip) ? IPAddress.Parse(ip.ToString()) : IPAddress.Loopback;
             await nextMiddleware();
         });
         next(app);

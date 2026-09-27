@@ -20,11 +20,6 @@ using WorkPilot.Workers.Jobs;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// A short, explicit host shutdown timeout (the ASP.NET Core default is
-// 30s) so a graceful stop (container stop, test host teardown) doesn't
-// drag out waiting on Hangfire's background dispatchers.
-builder.Host.ConfigureHostOptions(options => options.ShutdownTimeout = TimeSpan.FromSeconds(5));
-
 // Aspire cross-cutting concerns: OpenTelemetry, health checks, service
 // discovery, resilient HttpClient defaults.
 builder.AddServiceDefaults();
@@ -75,6 +70,13 @@ builder.Services.AddJobIngestion(builder.Configuration); // docs/specs/0008-job-
 // "Background jobs / workflows | Hangfire, storage in the same Postgres
 // database").
 var connectionString = builder.Configuration.GetConnectionString("workpilotdb");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    // Fail fast at startup (AGENTS.md): Aspire supplies this in dev and the
+    // tests set it; without it Hangfire would only fail on first use.
+    throw new InvalidOperationException("ConnectionStrings:workpilotdb is not configured.");
+}
+
 builder.Services.AddHangfire(config => config
     .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
     .UseSimpleAssemblyNameTypeSerializer()

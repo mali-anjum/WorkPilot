@@ -489,6 +489,58 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
         }
     }
 
+    [Fact]
+    public async Task RunAsync_WhenAnotherWriterChangesTheRunMidStep_ReenqueuesAndLaterSettlesOnFreshData()
+    {
+        // covers AC-10: a concurrent change to the run (its xmin token) must not
+        // crash the job or be overwritten; the job re-enqueues itself instead.
+        Guid runId = default;
+        var interfered = false;
+        var tool = new InterferingTool(async () =>
+        {
+            if (interfered)
+            {
+                return;
+            }
+
+            interfered = true;
+            await using var other = CreateDbContext();
+            await other.Database.ExecuteSqlInterpolatedAsync($"UPDATE app.agent_runs SET \"Goal\" = \"Goal\" WHERE \"Id\" = {runId}");
+        });
+        var jobs = new RecordingJobClient();
+        var db = CreateDbContext();
+        var job = new AdvanceRunJob(db, new ToolRegistry([tool]), new VerificationEngine(), new AuditService(db), jobs);
+        var (run, step, profileId) = await SeedPendingRunAsync(db, tool.Name);
+        runId = run.Id;
+
+        try
+        {
+            await job.RunAsync(run.Id);
+
+            var retry = Assert.Single(jobs.Created);
+            Assert.Equal(nameof(AdvanceRunJob.RunAsync), retry.Method.Name);
+            Assert.Equal(run.Id, retry.Args[0]);
+            await using (var afterConflict = CreateDbContext())
+            {
+                Assert.Equal(AgentRunStatus.Executing, (await afterConflict.AgentRuns.SingleAsync(r => r.Id == run.Id)).Status);
+                Assert.Equal(AgentStepStatus.Running, (await afterConflict.AgentSteps.SingleAsync(s => s.Id == step.Id)).Status);
+            }
+
+            // The re-enqueued pass, on fresh data, settles the run.
+            var (_, rerun) = CreateJob(tool);
+            await rerun.RunAsync(run.Id);
+
+            await using var verifyDb = CreateDbContext();
+            Assert.Equal(AgentRunStatus.Failed, (await verifyDb.AgentRuns.SingleAsync(r => r.Id == run.Id)).Status);
+            Assert.Equal(AgentStepStatus.Failed, (await verifyDb.AgentSteps.SingleAsync(s => s.Id == step.Id)).Status);
+            Assert.Equal(2, tool.AttemptCount);
+        }
+        finally
+        {
+            await CleanupAsync(profileId);
+        }
+    }
+
     private (WorkPilotDbContext Db, AdvanceRunJob Job) CreateJob(params ITool[] tools)
     {
         var db = CreateDbContext();
@@ -596,6 +648,43 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
             AttemptCount++;
             return Task.FromResult(ToolExecutionResult.Ok(null));
         }
+    }
+
+    // An idempotent tool that always fails, and runs a side action first (the
+    // test uses it to change the run from another connection mid step).
+    private sealed class InterferingTool(Func<Task> beforeResult) : ITool
+    {
+        public string Name => "interfering";
+        public string Description => "test tool that races the job";
+        public IReadOnlyList<string> RequiredArguments => [];
+        public IReadOnlyList<string> ExpectedOutputFields => [];
+        public ToolRiskTier RiskTier => ToolRiskTier.AutoAllowed;
+        public bool IsIdempotent => true;
+        public TimeSpan Timeout => TimeSpan.FromSeconds(5);
+        public int MaxRetries => 0;
+        public string? TargetType => null;
+        public int AttemptCount { get; private set; }
+
+        public async Task<ToolExecutionResult> ExecuteAsync(ToolExecutionContext context, CancellationToken cancellationToken)
+        {
+            AttemptCount++;
+            await beforeResult();
+            return ToolExecutionResult.Fail("scripted failure");
+        }
+    }
+
+    // Records enqueued jobs instead of storing them, so a test can see a re-enqueue.
+    private sealed class RecordingJobClient : IBackgroundJobClient
+    {
+        public List<Hangfire.Common.Job> Created { get; } = [];
+
+        public string Create(Hangfire.Common.Job job, Hangfire.States.IState state)
+        {
+            Created.Add(job);
+            return Created.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        public bool ChangeState(string jobId, Hangfire.States.IState state, string expectedState) => true;
     }
 
     // A controllable ITool double: scripted to always succeed or always fail,
