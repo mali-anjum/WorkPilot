@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Components.Forms;
 using WorkPilot.Domain.Modules.Profile;
 
-namespace WorkPilot.Web.Features.Resumes;
+namespace WorkPilot.Web.Features.Profile;
 
 /// <summary>Thrown when a picked file is over the upload limit, before anything is sent to the Api.</summary>
 public sealed class ResumeFileTooLargeException(string message) : Exception(message);

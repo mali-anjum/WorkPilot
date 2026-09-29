@@ -12,7 +12,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using WorkPilot.Application.Modules.Profile.Resumes;
 using WorkPilot.Web.Client;
-using WorkPilot.Web.Features.Resumes;
+using WorkPilot.Web.Features.Common;
+using WorkPilot.Web.Features.Profile;
 
 namespace WorkPilot.Web.Tests;
 
@@ -43,7 +44,7 @@ public sealed class ResumeFileEndpointTests : IAsyncLifetime
         _app = builder.Build();
         _app.UseAuthentication();
         _app.UseAuthorization();
-        _app.MapResumeFileEndpoints();
+        _app.MapProfileWebEndpoints();
         await _app.StartAsync();
     }
 
@@ -140,13 +141,13 @@ public sealed class ResumeFileEndpointTests : IAsyncLifetime
         public Task<ResumeDetailDto?> GetAsync(Guid profileId, Guid resumeId, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Not used by the download endpoint.");
 
-        public Task<ResumeApiResult<ResumeDetailDto>> CreateAsync(Guid profileId, string name, string content, string? note, ResumeUpload? file, CancellationToken cancellationToken = default) =>
+        public Task<ApiResult<ResumeDetailDto>> CreateAsync(Guid profileId, string name, string content, string? note, ResumeUpload? file, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Not used by the download endpoint.");
 
-        public Task<ResumeApiResult<ReviseResumeResultDto>> ReviseAsync(Guid profileId, Guid resumeId, string content, string? note, ResumeUpload? file, bool removeFile, CancellationToken cancellationToken = default) =>
+        public Task<ApiResult<ReviseResumeResultDto>> ReviseAsync(Guid profileId, Guid resumeId, string content, string? note, ResumeUpload? file, bool removeFile, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Not used by the download endpoint.");
 
-        public Task<ResumeApiResult<ResumeDetailDto>> TailorAsync(Guid profileId, Guid sourceVersionId, string name, string targetCompany, CancellationToken cancellationToken = default) =>
+        public Task<ApiResult<ResumeDetailDto>> TailorAsync(Guid profileId, Guid sourceVersionId, string name, string targetCompany, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Not used by the download endpoint.");
     }
 

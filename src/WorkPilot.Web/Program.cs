@@ -7,7 +7,7 @@ using WorkPilot.Web;
 using WorkPilot.Web.Components;
 using WorkPilot.Web.Features.Approvals;
 using WorkPilot.Web.Features.Auth;
-using WorkPilot.Web.Features.Resumes;
+using WorkPilot.Web.Features.Profile;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -86,8 +86,11 @@ builder.Services.AddScoped<IAuthService, SupabaseAuthService>();
 // resolves/creates the founder's ProfileId by calling its internal endpoint
 // over the Aspire service discovery network, never by touching EF Core here.
 builder.Services.AddHttpClient("api", client => client.BaseAddress = new Uri("https+http://api"));
-builder.Services.AddApprovalCenter(); // docs/specs/0007-approval-engine-center
-builder.Services.AddResumeManagementWeb(); // spec 0009
+
+// === Modules (alphabetical; at most one Add and one Map line each, spec 0018) ===
+builder.Services.AddApprovalsWeb();
+builder.Services.AddProfileWeb();
+// === End modules ===
 
 var app = builder.Build();
 
@@ -111,8 +114,11 @@ app.UseAuthorization();
 app.UseAntiforgery();
 
 app.MapAuthEndpoints();
-app.MapApprovalCenterEndpoints();
-app.MapResumeFileEndpoints(); // spec 0009
+
+// === Modules (alphabetical; at most one Add and one Map line each, spec 0018) ===
+app.MapApprovalsWebEndpoints();
+app.MapProfileWebEndpoints();
+// === End modules ===
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()

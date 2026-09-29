@@ -1,7 +1,7 @@
 @page "/resumes/{Id:guid}"
 @using WorkPilot.Application.Modules.Profile.Resumes
 @using WorkPilot.Domain.Modules.Profile
-@using WorkPilot.Web.Features.Resumes
+@using WorkPilot.Web.Features.Profile
 @inject IResumesApiClient ResumesApi
 @inject NavigationManager Navigation
 
@@ -124,7 +124,7 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        if (AuthState is null || ResumeWebExtensions.ProfileId((await AuthState).User) is not { } profileId)
+        if (AuthState is null || ProfileWebExtensions.ProfileId((await AuthState).User) is not { } profileId)
         {
             _notFound = true;
             return;

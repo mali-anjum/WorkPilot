@@ -9,10 +9,10 @@ namespace WorkPilot.Api.Endpoints;
 /// externally exposed (see AppHost.cs), so the Web host, which derives the
 /// profile from its session cookie, is the only caller.
 /// </summary>
-public static class ApprovalEndpoints
+public static class ApprovalsEndpoints
 {
     /// <summary>Maps <c>GET /internal/approvals</c> and <c>POST /internal/agent/approvals/{id}/decide</c>.</summary>
-    public static IEndpointRouteBuilder MapApprovalEndpoints(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapApprovalsEndpoints(this IEndpointRouteBuilder app)
     {
         // The Approval center view for one profile: pending approvals with
         // their evidence, plus recent decisions (AC-4).

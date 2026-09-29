@@ -7,7 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 using WorkPilot.Application.Modules.Profile.Resumes;
 using WorkPilot.Web.Client;
 using WorkPilot.Web.Components.Pages;
-using WorkPilot.Web.Features.Resumes;
+using WorkPilot.Web.Features.Common;
+using WorkPilot.Web.Features.Profile;
 
 namespace WorkPilot.Web.Tests;
 
@@ -242,9 +243,9 @@ public class ResumesTests : BunitContext
     {
         public List<ResumeSummaryDto> Summaries { get; set; } = [];
         public Dictionary<Guid, ResumeDetailDto> Details { get; } = [];
-        public ResumeApiResult<ResumeDetailDto> CreateResult { get; set; } = new(null, "not set up");
-        public ResumeApiResult<ReviseResumeResultDto> ReviseResult { get; set; } = new(null, "not set up");
-        public ResumeApiResult<ResumeDetailDto> TailorResult { get; set; } = new(null, "not set up");
+        public ApiResult<ResumeDetailDto> CreateResult { get; set; } = new(null, "not set up");
+        public ApiResult<ReviseResumeResultDto> ReviseResult { get; set; } = new(null, "not set up");
+        public ApiResult<ResumeDetailDto> TailorResult { get; set; } = new(null, "not set up");
 
         public List<Guid> ListedFor { get; } = [];
         public (Guid, string, string)? Created { get; private set; }
@@ -260,19 +261,19 @@ public class ResumesTests : BunitContext
         public Task<ResumeDetailDto?> GetAsync(Guid profileId, Guid resumeId, CancellationToken cancellationToken = default) =>
             Task.FromResult(profileId == ProfileId && Details.TryGetValue(resumeId, out var detail) ? detail : null);
 
-        public Task<ResumeApiResult<ResumeDetailDto>> CreateAsync(Guid profileId, string name, string content, string? note, ResumeUpload? file, CancellationToken cancellationToken = default)
+        public Task<ApiResult<ResumeDetailDto>> CreateAsync(Guid profileId, string name, string content, string? note, ResumeUpload? file, CancellationToken cancellationToken = default)
         {
             Created = (profileId, name, content);
             return Task.FromResult(CreateResult);
         }
 
-        public Task<ResumeApiResult<ReviseResumeResultDto>> ReviseAsync(Guid profileId, Guid resumeId, string content, string? note, ResumeUpload? file, bool removeFile, CancellationToken cancellationToken = default)
+        public Task<ApiResult<ReviseResumeResultDto>> ReviseAsync(Guid profileId, Guid resumeId, string content, string? note, ResumeUpload? file, bool removeFile, CancellationToken cancellationToken = default)
         {
             Revised = (profileId, resumeId, content);
             return Task.FromResult(ReviseResult);
         }
 
-        public Task<ResumeApiResult<ResumeDetailDto>> TailorAsync(Guid profileId, Guid sourceVersionId, string name, string targetCompany, CancellationToken cancellationToken = default)
+        public Task<ApiResult<ResumeDetailDto>> TailorAsync(Guid profileId, Guid sourceVersionId, string name, string targetCompany, CancellationToken cancellationToken = default)
         {
             Tailored = (profileId, sourceVersionId, name, targetCompany);
             return Task.FromResult(TailorResult);
@@ -312,7 +313,7 @@ public class ResumesApiClientTests
     [Fact]
     public async Task A_conflict_becomes_its_message()
     {
-        var (client, _) = Create(HttpStatusCode.Conflict, """{"errors":{"resume":["This version was just locked."]}}""");
+        var (client, _) = Create(HttpStatusCode.Conflict, """{"title":"Conflict","status":409,"detail":"This version was just locked."}""");
 
         var result = await client.ReviseAsync(ProfileId, Guid.NewGuid(), "text", null, null, false);
 
@@ -337,7 +338,7 @@ public class ResumesApiClientTests
 
         var result = await client.CreateAsync(ProfileId, "name", "text", null, null);
 
-        Assert.Equal("The request was rejected.", result.Error);
+        Assert.Equal("The request failed (400).", result.Error);
     }
 
     // covers: AC-1, AC-9: the create goes to the internal endpoint as multipart, carrying the profile and the file

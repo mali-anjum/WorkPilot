@@ -8,6 +8,8 @@ using WorkPilot.Domain.Modules.Agent;
 using WorkPilot.Domain.Modules.Approvals;
 using WorkPilot.Domain.Modules.Profile;
 using WorkPilot.Infrastructure.Modules.Agent;
+using WorkPilot.Infrastructure.Modules.Audit;
+using WorkPilot.Infrastructure.Modules.Audit.Outbox;
 using WorkPilot.Infrastructure.Persistence;
 using WorkPilot.Workers.Agent;
 
@@ -565,7 +567,7 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
         });
         var jobs = new RecordingJobClient();
         var db = CreateDbContext();
-        var job = new AdvanceRunJob(db, new ToolRegistry([tool]), new VerificationEngine(), new AuditService(db), jobs, NullLogger<AdvanceRunJob>.Instance);
+        var job = new AdvanceRunJob(db, new ToolRegistry([tool]), new VerificationEngine(), new AuditService(db), new EventPublisher(db, TimeProvider.System), jobs, NullLogger<AdvanceRunJob>.Instance);
         var (run, step, profileId) = await SeedPendingRunAsync(db, tool.Name);
         runId = run.Id;
 
@@ -587,7 +589,7 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
         var verification = new VerificationEngine();
         var audit = new AuditService(db);
         var jobs = factory.Services.CreateScope().ServiceProvider.GetRequiredService<IBackgroundJobClient>();
-        return (db, new AdvanceRunJob(db, registry, verification, audit, jobs, NullLogger<AdvanceRunJob>.Instance));
+        return (db, new AdvanceRunJob(db, registry, verification, audit, new EventPublisher(db, TimeProvider.System), jobs, NullLogger<AdvanceRunJob>.Instance));
     }
 
     private WorkPilotDbContext CreateDbContext() =>

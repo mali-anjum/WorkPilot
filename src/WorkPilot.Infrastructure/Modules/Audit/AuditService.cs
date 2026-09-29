@@ -1,8 +1,8 @@
-using WorkPilot.Application.Modules.Agent;
+using WorkPilot.Application.Modules.Audit;
 using WorkPilot.Domain.Modules.Audit;
 using WorkPilot.Infrastructure.Persistence;
 
-namespace WorkPilot.Infrastructure.Modules.Agent;
+namespace WorkPilot.Infrastructure.Modules.Audit;
 
 /// <inheritdoc cref="IAuditService" />
 public sealed class AuditService(WorkPilotDbContext db) : IAuditService

@@ -1,6 +1,6 @@
 using System.Text.Json;
-using WorkPilot.Application.Modules.Agent;
 using WorkPilot.Application.Modules.Applications;
+using WorkPilot.Application.Modules.Audit;
 using WorkPilot.Domain.Modules.Jobs;
 
 namespace WorkPilot.Application.Modules.Jobs;

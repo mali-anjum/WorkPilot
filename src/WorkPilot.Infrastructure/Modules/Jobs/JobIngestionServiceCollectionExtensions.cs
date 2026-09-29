@@ -1,9 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using WorkPilot.Application.Modules.Applications;
 using WorkPilot.Application.Modules.Jobs;
-using WorkPilot.Infrastructure.Modules.Applications;
 using WorkPilot.Infrastructure.Modules.Jobs.Sources;
 
 namespace WorkPilot.Infrastructure.Modules.Jobs;
@@ -33,10 +31,9 @@ public static class JobIngestionServiceCollectionExtensions
         var greenhouseBaseUrl = ValidateBaseUrl(configuration[GreenhouseBaseUrlKey] ?? DefaultGreenhouseBaseUrl, GreenhouseBaseUrlKey);
         var leverBaseUrl = ValidateBaseUrl(configuration[LeverBaseUrlKey] ?? DefaultLeverBaseUrl, LeverBaseUrlKey);
 
-        // IAuditService is registered by the Api's agent orchestrator setup (spec 0005).
+        // IAuditService comes from the Audit module, IJobApplicationReassigner from Applications.
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IJobRepository, JobRepository>();
-        services.AddScoped<IJobApplicationReassigner, JobApplicationReassigner>();
         services.AddScoped<JobMerger>();
         services.AddScoped<JobIngestionService>();
         services.AddScoped<JobDedupService>();

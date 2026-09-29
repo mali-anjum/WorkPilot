@@ -2,20 +2,19 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
-using WorkPilot.AI.Agent;
 using WorkPilot.AI.Providers;
 using WorkPilot.Api.Endpoints;
-using WorkPilot.Application.Modules.Agent;
 using WorkPilot.Application.Modules.Identity;
-using WorkPilot.Domain.Modules.Agent;
 using WorkPilot.Domain.Modules.Jobs;
-using WorkPilot.Infrastructure.Modules.Agent;
-using WorkPilot.Infrastructure.Modules.Agent.Tools;
+using WorkPilot.Infrastructure.Modules.Applications;
+using WorkPilot.Infrastructure.Modules.Audit.Outbox;
 using WorkPilot.Infrastructure.Modules.Identity;
 using WorkPilot.Infrastructure.Modules.Profile;
 using WorkPilot.Infrastructure.Persistence;
 using WorkPilot.Workers.Agent;
 using WorkPilot.Workers.Approvals;
+using WorkPilot.Workers.Audit;
+using WorkPilot.Workers.Common;
 using WorkPilot.Workers.Jobs;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,6 +27,11 @@ builder.AddServiceDefaults();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
+// One error shape for every endpoint (spec 0018, section 4): expected failures come back from use
+// cases as Result<T> and are mapped by ResultHttpExtensions.ToHttp; anything unexpected becomes a
+// logged 500 ProblemDetails through UseExceptionHandler below.
+builder.Services.AddProblemDetails();
+
 // Encrypts OAuthConnection access/refresh tokens before EF Core writes them
 // (docs/specs/0002-data-model/index.md, AC-6). Default key storage (the
 // local user profile / registry on Windows, ~/.aspnet/DataProtection-Keys on
@@ -39,32 +43,30 @@ builder.Services.AddDataProtection();
 // (the AppHost wires this to the same Postgres instance/database Supabase's
 // own Postgres container exposes; see AppHost.cs and docker-compose.yml).
 // EF Core owns only the product schema here, never `auth.*`/`storage.*`.
-builder.AddNpgsqlDbContext<WorkPilotDbContext>("workpilotdb");
+// The outbox interceptor asks for an event dispatch right after a save that
+// published one (spec 0018, section 3).
+builder.AddNpgsqlDbContext<WorkPilotDbContext>(
+    "workpilotdb",
+    configureDbContextOptions: options => options.AddInterceptors(OutboxSaveChangesInterceptor.Instance));
 
 // Resolves/creates the Profile row for a GoTrue user id. The Api process is
 // the sole owner of the DbContext (see above), so the Web host calls this
 // internal endpoint over the Aspire service discovery network rather than
 // touching EF Core itself (docs/specs/0004-auth-app-shell.md).
 builder.Services.AddScoped<IProfileProvisioningService, ProfileProvisioningService>();
-builder.Services.AddResumeManagement(); // spec 0009
 
-// Agent orchestrator core (docs/specs/0005-agent-orchestrator-core.md): Planner ->
-// Policy Engine -> Tool Registry -> Execution Engine -> Verification Engine ->
-// Approval Engine -> Audit. Each AI purpose (the Planner, for now) gets the
-// provider and model Ai:Purposes maps it to, validated at startup
-// (docs/specs/0006-ai-provider-abstraction).
+// Each AI purpose (the Planner, for now) gets the provider and model
+// Ai:Purposes maps it to, validated at startup (docs/specs/0006-ai-provider-abstraction).
 builder.Services.AddWorkPilotAi(builder.Configuration);
-builder.Services.AddScoped<IPlanner, ChatClientPlanner>();
-builder.Services.AddScoped<IPolicyEngine, PolicyEngine>();
-builder.Services.AddScoped<IVerificationEngine, VerificationEngine>();
-builder.Services.AddScoped<IAuditService, AuditService>();
-builder.Services.AddScoped<IToolRegistry, ToolRegistry>();
-builder.Services.AddScoped<ITool, ListMyProfileTool>();
-builder.Services.AddScoped<ITool, ApprovalRequiredDemoTool>();
-builder.Services.AddScoped<PlanRunJob>();
-builder.Services.AddScoped<AdvanceRunJob>();
-builder.Services.AddApprovalEngine(); // docs/specs/0007-approval-engine-center
-builder.Services.AddJobIngestion(builder.Configuration); // docs/specs/0008-job-source-ingestion
+
+// === Modules (alphabetical; one Add and one Map line each, spec 0018) ===
+builder.Services.AddAgentModule(builder.Configuration);
+builder.Services.AddApplicationsModule(builder.Configuration);
+builder.Services.AddApprovalsModule(builder.Configuration);
+builder.Services.AddAuditModule(builder.Configuration);
+builder.Services.AddJobsModule(builder.Configuration);
+builder.Services.AddProfileModule(builder.Configuration);
+// === End modules ===
 
 // Hangfire, storage in the same Postgres database as EF Core (per spec:
 // "Background jobs / workflows | Hangfire, storage in the same Postgres
@@ -112,6 +114,8 @@ if (!builder.Configuration.GetValue<bool>("Hangfire:DisableServer"))
 
 var app = builder.Build();
 
+app.UseExceptionHandler();
+
 if (builder.Configuration.GetValue<bool>("Hangfire:DisableServer"))
 {
     // Loud on purpose: this flag means no background job ever actually
@@ -154,7 +158,7 @@ app.MapDefaultEndpoints(); // Aspire health/liveness endpoints from ServiceDefau
 // yet — this is a local scaffold; add authorization before any non-local
 // deployment.
 app.UseHangfireDashboard("/hangfire");
-app.MapJobEndpoints(); // docs/specs/0008-job-source-ingestion
+app.ApplyRecurringJobs(); // every module's recurring jobs (spec 0018, section 5)
 
 app.MapGet("/health/db", async (WorkPilotDbContext db) =>
 {
@@ -196,69 +200,12 @@ app.MapPost("/internal/identity/profile", async (
     return Results.Ok(new ResolveProfileResponse(profileId));
 });
 
-// Internal only (same network boundary as /internal/identity/profile above).
-// Triggers a run and returns immediately: planning and execution both happen
-// in background jobs, never inline in the request, so a restart never leaves
-// a run stuck mid-request (docs/specs/0005-agent-orchestrator-core.md, AC-1, AC-9).
-app.MapPost("/internal/agent/runs", async (
-    TriggerAgentRunRequest request,
-    WorkPilotDbContext db,
-    IBackgroundJobClient jobs,
-    CancellationToken cancellationToken) =>
-{
-    if (string.IsNullOrWhiteSpace(request.Goal))
-    {
-        return Results.BadRequest();
-    }
-
-    var profileExists = await db.Profiles.AnyAsync(p => p.Id == request.ProfileId, cancellationToken);
-    if (!profileExists)
-    {
-        return Results.NotFound();
-    }
-
-    var workflow = new WorkflowInstance { DefinitionName = "AgentRun", Status = AgentRunStatus.Planning.ToString() };
-    db.WorkflowInstances.Add(workflow);
-
-    var run = new AgentRun
-    {
-        WorkflowInstanceId = workflow.Id,
-        ProfileId = request.ProfileId,
-        Goal = request.Goal,
-    };
-    db.AgentRuns.Add(run);
-    await db.SaveChangesAsync(cancellationToken);
-
-    jobs.Enqueue<PlanRunJob>(j => j.RunAsync(run.Id));
-
-    return Results.Accepted(value: new TriggerAgentRunResponse(run.Id, run.Status.ToString()));
-});
-
-app.MapGet("/internal/agent/runs/{id:guid}", async (Guid id, WorkPilotDbContext db, CancellationToken cancellationToken) =>
-{
-    var run = await db.AgentRuns
-        .Include(r => r.Steps.OrderBy(s => s.Ordinal))
-        .ThenInclude(s => s.ToolCalls)
-        .AsNoTracking()
-        .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
-
-    if (run is null)
-    {
-        return Results.NotFound();
-    }
-
-    var steps = run.Steps
-        .Select(s => new AgentRunStepView(s.Ordinal, s.ToolName, s.Status.ToString(), s.ToolCalls.Count > 0 ? s.ToolCalls[^1].Success : null))
-        .ToList();
-
-    return Results.Ok(new AgentRunView(run.Id, run.Status.ToString(), steps));
-});
-
-// The approval engine (docs/specs/0007-approval-engine-center): the Approval
-// center view and the decide path, in Endpoints/ApprovalEndpoints.cs.
-app.MapApprovalEndpoints();
-
-app.MapResumeEndpoints(); // spec 0009
+// === Modules (alphabetical; one Add and one Map line each, spec 0018) ===
+app.MapAgentEndpoints();
+app.MapApprovalsEndpoints();
+app.MapJobsEndpoints();
+app.MapProfileEndpoints();
+// === End modules ===
 
 app.Run();
 
@@ -268,16 +215,4 @@ internal sealed record ResolveProfileRequest(Guid AuthUserId, string Email);
 /// <summary>Response body for <c>POST /internal/identity/profile</c>.</summary>
 internal sealed record ResolveProfileResponse(Guid ProfileId);
 
-/// <summary>Request body for <c>POST /internal/agent/runs</c>.</summary>
-internal sealed record TriggerAgentRunRequest(string Goal, Guid ProfileId);
-
-/// <summary>Response body for <c>POST /internal/agent/runs</c>.</summary>
-internal sealed record TriggerAgentRunResponse(Guid AgentRunId, string Status);
-
 internal sealed record AiHealthResponse(string Status, string Purpose, string Provider, string? Model, long LatencyMs, string? Error);
-
-/// <summary>One step as reported by <c>GET /internal/agent/runs/{id}</c>.</summary>
-internal sealed record AgentRunStepView(int Ordinal, string ToolName, string Status, bool? Success);
-
-/// <summary>Response body for <c>GET /internal/agent/runs/{id}</c>.</summary>
-internal sealed record AgentRunView(Guid AgentRunId, string Status, IReadOnlyList<AgentRunStepView> Steps);

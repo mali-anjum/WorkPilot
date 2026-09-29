@@ -7,6 +7,8 @@ using WorkPilot.Domain.Modules.Agent;
 using WorkPilot.Domain.Modules.Audit;
 using WorkPilot.Domain.Modules.Profile;
 using WorkPilot.Infrastructure.Modules.Agent;
+using WorkPilot.Infrastructure.Modules.Audit;
+using WorkPilot.Infrastructure.Modules.Audit.Outbox;
 using WorkPilot.Infrastructure.Persistence;
 using WorkPilot.Workers.Agent;
 
@@ -109,7 +111,7 @@ public class PlanRunJobTests(SharedApiFactory factory)
         try
         {
             var jobs = factory.Services.CreateScope().ServiceProvider.GetRequiredService<IBackgroundJobClient>();
-            var job = new PlanRunJob(db, planner, new ToolRegistry(Tools), new PolicyEngine(), jobs, new AuditService(db));
+            var job = new PlanRunJob(db, planner, new ToolRegistry(Tools), new PolicyEngine(), jobs, new AuditService(db), new EventPublisher(db, TimeProvider.System));
 
             await job.RunAsync(runId);
 
@@ -132,7 +134,7 @@ public class PlanRunJobTests(SharedApiFactory factory)
         try
         {
             var jobs = factory.Services.CreateScope().ServiceProvider.GetRequiredService<IBackgroundJobClient>();
-            var job = new PlanRunJob(db, new FixedPlanner(plan), new ToolRegistry(Tools), new PolicyEngine(), jobs, new AuditService(db));
+            var job = new PlanRunJob(db, new FixedPlanner(plan), new ToolRegistry(Tools), new PolicyEngine(), jobs, new AuditService(db), new EventPublisher(db, TimeProvider.System));
 
             await job.RunAsync(runId);
 

@@ -20,7 +20,7 @@ internal static class JobsEndpoints
     internal const int MaxTake = 200;
 
     /// <summary>Maps the ingestion trigger, the list and detail reads, and the split.</summary>
-    public static IEndpointRouteBuilder MapJobEndpoints(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapJobsEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/internal/jobs/ingestions", TriggerIngestionAsync);
         app.MapGet("/internal/jobs", ListJobsAsync);

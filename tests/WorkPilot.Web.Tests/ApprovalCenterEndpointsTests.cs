@@ -43,7 +43,7 @@ public sealed class ApprovalCenterEndpointsTests : IAsyncLifetime
         _app.UseAuthorization();
         // Hands out a token pair the way a rendered page's <AntiforgeryToken /> does.
         _app.MapGet("/token", (HttpContext ctx, IAntiforgery antiforgery) => antiforgery.GetAndStoreTokens(ctx).RequestToken!);
-        _app.MapApprovalCenterEndpoints();
+        _app.MapApprovalsWebEndpoints();
         await _app.StartAsync();
     }
 

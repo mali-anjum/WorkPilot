@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
+using WorkPilot.Application.Common;
 using WorkPilot.Application.Modules.Agent;
+using WorkPilot.Application.Modules.Audit;
 using WorkPilot.Domain.Modules.Agent;
 using WorkPilot.Infrastructure.Modules.Agent;
 using WorkPilot.Infrastructure.Persistence;
@@ -17,7 +19,7 @@ namespace WorkPilot.Workers.Agent;
 /// retries) or an unparseable plan fails the run and is audited as
 /// <c>PlanningFailed</c> (spec 0006, AC-6), never left stuck at Planning.
 /// </summary>
-public sealed class PlanRunJob(WorkPilotDbContext db, IPlanner planner, IToolRegistry registry, IPolicyEngine policy, IBackgroundJobClient jobs, IAuditService audit)
+public sealed class PlanRunJob(WorkPilotDbContext db, IPlanner planner, IToolRegistry registry, IPolicyEngine policy, IBackgroundJobClient jobs, IAuditService audit, IEventPublisher events)
 {
     [AutomaticRetry(Attempts = 0)]
     public async Task RunAsync(Guid agentRunId)
@@ -39,12 +41,12 @@ public sealed class PlanRunJob(WorkPilotDbContext db, IPlanner planner, IToolReg
         }
         catch (AiProviderException ex)
         {
-            await FailPlanningAsync(run, "provider_error", ex.Purpose, ex.Provider, ex.Model, ex.Message);
+            await FailPlanningAsync(run, AgentRunFailureReasons.ProviderError, ex.Purpose, ex.Provider, ex.Model, ex.Message);
             return;
         }
         catch (PlanParseException ex)
         {
-            await FailPlanningAsync(run, "unparseable_plan", ex.Purpose, ex.Provider, ex.Model, ex.Message);
+            await FailPlanningAsync(run, AgentRunFailureReasons.UnparseablePlan, ex.Purpose, ex.Provider, ex.Model, ex.Message);
             return;
         }
 
@@ -53,6 +55,7 @@ public sealed class PlanRunJob(WorkPilotDbContext db, IPlanner planner, IToolReg
         if (violations.Count > 0)
         {
             run.TransitionTo(AgentRunStatus.Failed);
+            events.Publish(new AgentRunFailed(run.Id, AgentRunFailureReasons.PolicyViolation));
             await WorkflowMirror.SyncAsync(db, run, CancellationToken.None);
             await db.SaveChangesAsync();
             return;
@@ -86,6 +89,7 @@ public sealed class PlanRunJob(WorkPilotDbContext db, IPlanner planner, IToolReg
         // carry neither (spec 0006, AC-6).
         var payload = JsonSerializer.Serialize(new { reason, purpose, provider, model, error }, JsonSerializerOptions.Web);
         audit.Record("Agent", "PlanningFailed", nameof(AgentRun), run.Id, payload);
+        events.Publish(new AgentRunFailed(run.Id, reason));
 
         await db.SaveChangesAsync();
     }

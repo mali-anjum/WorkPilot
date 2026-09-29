@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using WorkPilot.Application.Common;
 using WorkPilot.Application.Modules.Profile.Resumes;
 using WorkPilot.Domain.Modules.Profile;
 using WorkPilot.Infrastructure.Persistence;
@@ -54,11 +55,11 @@ public sealed class ResumeService(WorkPilotDbContext db, IResumeFileStore files,
     }
 
     /// <inheritdoc />
-    public async Task<ResumeResult<ResumeDetailDto>> CreateAsync(CreateResumeCommand command, CancellationToken cancellationToken)
+    public async Task<Result<ResumeDetailDto>> CreateAsync(CreateResumeCommand command, CancellationToken cancellationToken)
     {
         if (!await db.Profiles.AnyAsync(p => p.Id == command.ProfileId, cancellationToken))
         {
-            return ResumeResult<ResumeDetailDto>.NotFound();
+            return Result<ResumeDetailDto>.NotFound();
         }
 
         try
@@ -67,16 +68,16 @@ public sealed class ResumeService(WorkPilotDbContext db, IResumeFileStore files,
             var resume = Resume.CreateBase(command.ProfileId, command.Name ?? string.Empty, command.Content, command.Note, file, clock.GetUtcNow());
             db.Resumes.Add(resume);
             await db.SaveChangesAsync(cancellationToken);
-            return ResumeResult<ResumeDetailDto>.Ok(ToDetail(resume));
+            return Result<ResumeDetailDto>.Ok(ToDetail(resume));
         }
         catch (ResumeValidationException ex)
         {
-            return ResumeResult<ResumeDetailDto>.Invalid(ex.Field, ex.Message);
+            return Result<ResumeDetailDto>.Invalid(ex.Field, ex.Message);
         }
     }
 
     /// <inheritdoc />
-    public async Task<ResumeResult<ResumeDetailDto>> TailorAsync(TailorResumeCommand command, CancellationToken cancellationToken)
+    public async Task<Result<ResumeDetailDto>> TailorAsync(TailorResumeCommand command, CancellationToken cancellationToken)
     {
         var source = await db.ResumeVersions
             .AsNoTracking()
@@ -90,7 +91,7 @@ public sealed class ResumeService(WorkPilotDbContext db, IResumeFileStore files,
 
         if (source is null)
         {
-            return ResumeResult<ResumeDetailDto>.NotFound();
+            return Result<ResumeDetailDto>.NotFound();
         }
 
         try
@@ -114,21 +115,21 @@ public sealed class ResumeService(WorkPilotDbContext db, IResumeFileStore files,
                 clock.GetUtcNow());
             db.Resumes.Add(resume);
             await db.SaveChangesAsync(cancellationToken);
-            return ResumeResult<ResumeDetailDto>.Ok(ToDetail(resume));
+            return Result<ResumeDetailDto>.Ok(ToDetail(resume));
         }
         catch (ResumeValidationException ex)
         {
-            return ResumeResult<ResumeDetailDto>.Invalid(ex.Field, ex.Message);
+            return Result<ResumeDetailDto>.Invalid(ex.Field, ex.Message);
         }
     }
 
     /// <inheritdoc />
-    public async Task<ResumeResult<ReviseResumeResultDto>> ReviseAsync(ReviseResumeCommand command, CancellationToken cancellationToken)
+    public async Task<Result<ReviseResumeResultDto>> ReviseAsync(ReviseResumeCommand command, CancellationToken cancellationToken)
     {
         var resume = await LoadAsync(command.ProfileId, command.ResumeId, tracked: true, cancellationToken);
         if (resume is null)
         {
-            return ResumeResult<ReviseResumeResultDto>.NotFound();
+            return Result<ReviseResumeResultDto>.NotFound();
         }
 
         try
@@ -147,34 +148,34 @@ public sealed class ResumeService(WorkPilotDbContext db, IResumeFileStore files,
                 await db.SaveChangesAsync(cancellationToken);
             }
 
-            return ResumeResult<ReviseResumeResultDto>.Ok(
+            return Result<ReviseResumeResultDto>.Ok(
                 new ReviseResumeResultDto(result.Outcome.ToString(), result.Version.VersionNumber, ToDetail(resume)));
         }
         catch (ResumeValidationException ex)
         {
-            return ResumeResult<ReviseResumeResultDto>.Invalid(ex.Field, ex.Message);
+            return Result<ReviseResumeResultDto>.Invalid(ex.Field, ex.Message);
         }
         catch (DbUpdateException ex) when (IsConflict(ex))
         {
             // Lost a race: an application locked the draft (trigger) or another edit appended the
             // same version number (unique index) between our read and our write (AC-5).
-            return ResumeResult<ReviseResumeResultDto>.Conflict(
+            return Result<ReviseResumeResultDto>.Conflict(
                 "The resume changed while you were editing (its newest version was locked or replaced). Reload and try again.");
         }
     }
 
     /// <inheritdoc />
-    public async Task<ResumeResult<ResumeVersionDto>> LockVersionAsync(Guid profileId, Guid versionId, Guid applicationId, CancellationToken cancellationToken)
+    public async Task<Result<ResumeVersionDto>> LockVersionAsync(Guid profileId, Guid versionId, Guid applicationId, CancellationToken cancellationToken)
     {
         if (applicationId == Guid.Empty)
         {
-            return ResumeResult<ResumeVersionDto>.Invalid("applicationId", "An application id is required to lock a resume version.");
+            return Result<ResumeVersionDto>.Invalid("applicationId", "An application id is required to lock a resume version.");
         }
 
         var version = await OwnedVersions(profileId).FirstOrDefaultAsync(v => v.Id == versionId, cancellationToken);
         if (version is null)
         {
-            return ResumeResult<ResumeVersionDto>.NotFound();
+            return Result<ResumeVersionDto>.NotFound();
         }
 
         if (version.Lock(applicationId, clock.GetUtcNow()))
@@ -188,11 +189,11 @@ public sealed class ResumeService(WorkPilotDbContext db, IResumeFileStore files,
                 // Someone else locked it first; the first lock wins (AC-3), so report the stored state.
                 db.ChangeTracker.Clear();
                 var stored = await OwnedVersions(profileId).AsNoTracking().FirstAsync(v => v.Id == versionId, cancellationToken);
-                return ResumeResult<ResumeVersionDto>.Ok(ToDto(stored));
+                return Result<ResumeVersionDto>.Ok(ToDto(stored));
             }
         }
 
-        return ResumeResult<ResumeVersionDto>.Ok(ToDto(version));
+        return Result<ResumeVersionDto>.Ok(ToDto(version));
     }
 
     /// <inheritdoc />

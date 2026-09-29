@@ -1,15 +1,16 @@
 using Microsoft.AspNetCore.Mvc;
+using WorkPilot.Api.Common;
 using WorkPilot.Application.Modules.Profile.Resumes;
 using WorkPilot.Domain.Modules.Profile;
 
 namespace WorkPilot.Api.Endpoints;
 
 /// <summary>
-/// Resume management endpoints (spec 0009). Internal only, like every other Api endpoint: the Api is
+/// The Profile module's endpoints: resume management (spec 0009). Internal only, like every other Api endpoint: the Api is
 /// never externally exposed (spec 0004), so the caller (the Web host) passes the signed in
 /// <c>profileId</c> and every call is scoped to it (AC-9).
 /// </summary>
-public static class ResumeEndpoints
+public static class ProfileEndpoints
 {
     /// <summary>
     /// The largest create or revise request accepted: the 5 MB file plus room for the text fields
@@ -19,7 +20,7 @@ public static class ResumeEndpoints
     public const long MaxUploadRequestBytes = ResumeRules.FileMaxBytes + (1024 * 1024);
 
     /// <summary>Maps the <c>/internal/resumes</c> endpoints.</summary>
-    public static IEndpointRouteBuilder MapResumeEndpoints(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapProfileEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/internal/resumes");
 
@@ -52,7 +53,7 @@ public static class ResumeEndpoints
             var result = await resumes.CreateAsync(
                 new CreateResumeCommand(profileId, form["name"], form["content"], form["note"], ToUpload(file, stream)),
                 ct);
-            return ToHttp(result, detail => Results.Created($"/internal/resumes/{detail.Id}", detail));
+            return result.ToHttp(detail => Results.Created($"/internal/resumes/{detail.Id}", detail));
         }).WithUploadLimit();
 
         // Creates a tailored resume copied from one of the profile's versions (AC-6).
@@ -61,7 +62,7 @@ public static class ResumeEndpoints
             var result = await resumes.TailorAsync(
                 new TailorResumeCommand(body.ProfileId, body.SourceVersionId, body.Name, body.TargetCompany, body.Note),
                 ct);
-            return ToHttp(result, detail => Results.Created($"/internal/resumes/{detail.Id}", detail));
+            return result.ToHttp(detail => Results.Created($"/internal/resumes/{detail.Id}", detail));
         });
 
         // Edits a resume (multipart: profileId, content, note?, file?, removeFile?): the draft in place,
@@ -85,12 +86,12 @@ public static class ResumeEndpoints
             var result = await resumes.ReviseAsync(
                 new ReviseResumeCommand(profileId, id, form["content"], form["note"], ToUpload(file, stream), removeFile),
                 ct);
-            return ToHttp(result, Results.Ok);
+            return result.ToHttp(Results.Ok);
         }).WithUploadLimit();
 
         // Locks a version because an application used it; idempotent (AC-3). Feature 17's hook.
         group.MapPost("/versions/{versionId:guid}/lock", async (Guid versionId, [FromBody] LockResumeVersionRequest body, IResumeService resumes, CancellationToken ct) =>
-            ToHttp(await resumes.LockVersionAsync(body.ProfileId, versionId, body.ApplicationId, ct), Results.Ok));
+            (await resumes.LockVersionAsync(body.ProfileId, versionId, body.ApplicationId, ct)).ToHttp(Results.Ok));
 
         // Downloads a version's stored file, always as an attachment (AC-7).
         group.MapGet("/versions/{versionId:guid}/file", async (Guid versionId, Guid profileId, IResumeService resumes, CancellationToken ct) =>
@@ -136,14 +137,6 @@ public static class ResumeEndpoints
         file is null || stream is null ? null : new UploadedResumeFile(file.FileName, file.Length, stream);
 
     private static Dictionary<string, string[]> Error(string field, string message) => new() { [field] = [message] };
-
-    private static IResult ToHttp<T>(ResumeResult<T> result, Func<T, IResult> ok) => result.Status switch
-    {
-        ResumeResultStatus.Ok => ok(result.Value!),
-        ResumeResultStatus.NotFound => Results.NotFound(),
-        ResumeResultStatus.Conflict => Results.Conflict(new { errors = result.Errors }),
-        _ => Results.ValidationProblem(result.Errors?.ToDictionary() ?? []),
-    };
 }
 
 /// <summary>Request body for <c>POST /internal/resumes/tailored</c>.</summary>
