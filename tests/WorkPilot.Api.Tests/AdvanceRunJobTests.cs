@@ -546,6 +546,59 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
         }
     }
 
+    // covers spec 0018 event catalog: suspending for approval publishes ApprovalRequested for the new approval.
+    [Fact]
+    public async Task RunAsync_WhenItSuspendsForApproval_PublishesApprovalRequested()
+    {
+        var tool = new ScriptedTool("gated_event", isIdempotent: true, maxRetries: 0, ScriptedTool.Behavior.AlwaysSucceed, riskTier: ToolRiskTier.ApprovalRequired);
+        var (db, job) = CreateJob(tool);
+        var (run, step, profileId) = await SeedPendingRunAsync(db, tool.Name);
+
+        try
+        {
+            await job.RunAsync(run.Id);
+
+            await using var verifyDb = CreateDbContext();
+            var approval = await verifyDb.Approvals.SingleAsync(a => a.TargetId == step.Id);
+            var requested = Assert.Single(await OutboxTestHelpers.EventsMentioningAsync(verifyDb, approval.Id));
+            Assert.Equal(ApprovalRequested.EventName, requested.EventName);
+            Assert.Equal(step.Id.ToString(), OutboxTestHelpers.Property(requested, "targetId"));
+            Assert.Equal(ApprovalTargets.AgentStep, OutboxTestHelpers.Property(requested, "targetType"));
+        }
+        finally
+        {
+            await using var cleanup = CreateDbContext();
+            await OutboxTestHelpers.DeleteEventsMentioningAsync(cleanup, step.Id);
+            await CleanupAsync(profileId);
+        }
+    }
+
+    // covers spec 0018 event catalog: a failed step fails the run and publishes AgentRunFailed once.
+    [Fact]
+    public async Task RunAsync_WhenAStepFails_PublishesAgentRunFailedOnce()
+    {
+        var tool = new ScriptedTool("fails_for_event", isIdempotent: true, maxRetries: 0, ScriptedTool.Behavior.AlwaysFail);
+        var (db, job) = CreateJob(tool);
+        var (run, _, profileId) = await SeedPendingRunAsync(db, tool.Name);
+
+        try
+        {
+            await job.RunAsync(run.Id);
+            await job.RunAsync(run.Id); // a redelivered job on a terminal run publishes nothing more
+
+            await using var verifyDb = CreateDbContext();
+            var failed = Assert.Single(await OutboxTestHelpers.EventsMentioningAsync(verifyDb, run.Id));
+            Assert.Equal(AgentRunFailed.EventName, failed.EventName);
+            Assert.Equal(AgentRunFailureReasons.StepFailed, OutboxTestHelpers.Property(failed, "reason"));
+        }
+        finally
+        {
+            await using var cleanup = CreateDbContext();
+            await OutboxTestHelpers.DeleteEventsMentioningAsync(cleanup, run.Id);
+            await CleanupAsync(profileId);
+        }
+    }
+
     // Runs one pass of a single step run whose tool changes the run from
     // another connection while it executes, so the status save after the tool
     // hits a concurrency conflict. Asserts the pass re-enqueued itself and left
