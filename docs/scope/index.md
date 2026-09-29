@@ -48,6 +48,7 @@ _These are recommendations to keep the build orderly, not requirements. Skip any
 | 31 | Integrations hub | System | planned |
 | 32 | Command palette & global search | System | planned |
 | 33 | Onboarding flow | System | planned |
+| 34 | Module contracts groundwork | Foundation | done |
 
 ## Deferred
 
