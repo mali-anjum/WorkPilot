@@ -1,7 +1,7 @@
 # 0018. Module contracts for the remaining features
 
 **Date**: 2026-09-26
-**Status**: In Progress
+**Status**: Accepted
 
 ## Summary
 
