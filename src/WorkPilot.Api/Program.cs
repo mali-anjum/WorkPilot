@@ -114,7 +114,11 @@ if (!builder.Configuration.GetValue<bool>("Hangfire:DisableServer"))
 
 var app = builder.Build();
 
+// Unexpected exceptions become a logged 500 ProblemDetails, and any error
+// response an endpoint returns without a body (a bare Results.NotFound())
+// gets a ProblemDetails body too, so every Api failure has one shape (spec 0018, section 4).
 app.UseExceptionHandler();
+app.UseStatusCodePages();
 
 if (builder.Configuration.GetValue<bool>("Hangfire:DisableServer"))
 {
