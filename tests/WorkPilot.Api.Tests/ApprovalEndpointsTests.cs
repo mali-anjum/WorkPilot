@@ -339,6 +339,33 @@ public class ApprovalEndpointsTests(SharedApiFactory factory)
         }
     }
 
+    // covers spec 0018 section 4: every decide refusal keeps its status and is ProblemDetails with a detail.
+    [Fact]
+    public async Task Decide_ASecondDecision_IsAConflictProblemWithADetail()
+    {
+        using var client = factory.CreateClient();
+        var profileId = await CreateProfileAsync();
+        var seeded = await SeedAwaitingApprovalRunAsync(profileId, ApprovalTool, ToolRiskTier.ApprovalRequired);
+
+        try
+        {
+            await DecideAsync(client, seeded.ApprovalId, "Reject", profileId);
+            var response = await DecideAsync(client, seeded.ApprovalId, "Reject", profileId);
+
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("This approval was already decided.", body.GetProperty("detail").GetString());
+        }
+        finally
+        {
+            await using var cleanup = CreateDbContext();
+            await OutboxTestHelpers.DeleteEventsMentioningAsync(cleanup, seeded.ApprovalId);
+            await OutboxTestHelpers.DeleteEventsMentioningAsync(cleanup, seeded.RunId);
+            await CleanupAsync(profileId);
+        }
+    }
+
     // covers: AC-9: a decision that lost the race publishes nothing (the outbox row was in the discarded unit of work).
     [Fact]
     public async Task Decide_ThatLosesARace_PublishesNoEvent()

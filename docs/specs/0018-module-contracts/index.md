@@ -249,11 +249,28 @@ These wave numbers replace the old parallel build's "Wave 1" label; its unbuilt 
 
 ## Follow-up
 
-- [ ] Build the Wave 0 groundwork (`feat/module-contracts`) before any other feature; the scope has no row for it, so `/scope` can enroll one (for example "Module contracts groundwork", phase Foundation).
+- [x] Build the Wave 0 groundwork (`feat/module-contracts`) before any other feature; the scope has no row for it, so `/scope` can enroll one (for example "Module contracts groundwork", phase Foundation).
 - [ ] After groundwork merges, `/sync` should replace the "error handling pattern not yet chosen" rule in `AGENTS.md` with a pointer to this spec, and add the module wiring and outbox rules.
 - [ ] Add an architecture test (reflection over the Application assembly, in `WorkPilot.Domain.Tests` or a new test project) that fails when an `IEventHandler<T>` or service in module A references a repository or configuration of module B. It covers the part of "write own" a test can see.
 - [ ] Design Wave 1 next: `/architect` the job core loop (#11, #19, #20, #12, #13; #10 already has spec 0017) in one sitting.
+- [ ] Route the Agent module's `Approval` insert (`AdvanceRunJob.SuspendForApprovalAsync`) through an Approvals interface, and move `DecideApprovalOutcome` onto `Result<T>` when Approvals is next touched.
 - [ ] Spec 0002's follow up about deleting old `AgentStep`/`ToolCall` rows can reuse the recurring job registration from section 5 when it is built.
+
+## Decisions made without the engineer (please review)
+
+Made while building the Wave 0 groundwork (`feat/module-contracts`), per section 8. Each is the option most consistent with sections 1 to 7; change any you disagree with.
+
+- **Existing routes kept.** `/internal/resumes`, `/internal/approvals`, `/internal/agent/approvals/{id}/decide` and `/internal/jobs` keep their paths instead of moving under `/internal/<module>`, because Wave 0 promises no behavior change and the Web calls them. The `/internal/<module>` group rule applies to new modules.
+- **`ApprovalRequested` is raised by `AdvanceRunJob`** (Agent), where the `Approval` row is created today, not by Approvals.
+- **Agent still writes the `Approval` table** in `AdvanceRunJob.SuspendForApprovalAsync`. This predates the spec (0007) and is an accepted exception to section 1 until a follow up routes it through an Approvals interface; new code must not copy it.
+- **`AgentRunFailed` is also raised when you reject an approval** (reason `approval_rejected`), since that is another place a run becomes Failed. Reasons are the constants in `AgentRunFailureReasons`: `provider_error`, `unparseable_plan`, `policy_violation`, `step_failed`, `approval_gate_refused`, `approval_rejected`.
+- **`DecideApprovalOutcome` kept** as the decide handler's return type; the endpoint maps each outcome to ProblemDetails with its existing status (400, 403, 404, 409, 422). Only `ResumeResult<T>` moved onto `Result<T>`.
+- **Bodyless errors get ProblemDetails** through `app.UseStatusCodePages()` next to `UseExceptionHandler()`, so older `Results.NotFound()` calls already share the one error shape.
+- **The outbox interceptor finds its trigger at save time** through EF's application service provider (Aspire's `AddNpgsqlDbContext` gives the options callback no service provider). A context built by hand without one simply leaves delivery to the every minute sweep.
+- **The startup check only looks at undispatched rows** for unknown event names, so removing an event type later does not block startup because of old, already dispatched rows.
+- **`IEventHandler<T>` handlers run inside `HandleEventJob`'s transaction** and so must not open a transaction of their own (for example `IJobRepository.InTransactionAsync`).
+- **Registration helpers**: `AddEventHandler<TEvent, THandler>()` lives with `AddAuditModule` in `WorkPilot.Workers/Audit/AuditModule.cs`; `AddRecurringJob<TJob>()` and `ApplyRecurringJobs()` in `WorkPilot.Workers/Common/RecurringJobs.cs`. Recurring job ids are prefixed with the module (`audit.outbox-sweep`).
+- **Module files**: Applications got its own `AddApplicationsModule` (for `IJobApplicationReassigner`, which Jobs used to register); `IAgentRunScheduler` moved from Approvals into `AddAgentModule`; Workers now references `WorkPilot.AI` for `ChatClientPlanner`. Web: `Features/Resumes` became `Features/Profile`, with `AddApprovalsWeb`/`MapApprovalsWebEndpoints` and `AddProfileWeb`/`MapProfileWebEndpoints`.
 
 ## Rationale
 
