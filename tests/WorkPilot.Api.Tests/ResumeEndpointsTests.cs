@@ -5,6 +5,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using WorkPilot.Application.Common;
 using WorkPilot.Application.Modules.Profile.Resumes;
 using WorkPilot.Domain.Modules.Profile;
 using WorkPilot.Infrastructure.Persistence;
@@ -205,7 +206,7 @@ public class ResumeEndpointsTests(SharedApiFactory factory) : IAsyncLifetime
         var result = await service.ReviseAsync(
             new ReviseResumeCommand(_profileA, created.Id, "raced edit", null, null, false), CancellationToken.None);
 
-        Assert.Equal(ResumeResultStatus.Conflict, result.Status);
+        Assert.Equal(ResultStatus.Conflict, result.Status);
         var stored = (await GetOkAsync(_profileA, created.Id)).Versions.Single();
         Assert.Equal("Experience: C#", stored.Content);
         Assert.True(stored.IsLocked);
@@ -226,7 +227,7 @@ public class ResumeEndpointsTests(SharedApiFactory factory) : IAsyncLifetime
 
         var result = await service.LockVersionAsync(_profileA, v1Id, Guid.NewGuid(), CancellationToken.None);
 
-        Assert.Equal(ResumeResultStatus.Ok, result.Status);
+        Assert.Equal(ResultStatus.Ok, result.Status);
         Assert.Equal(winner, result.Value!.LockedByApplicationId);
         Assert.Equal(winner, (await GetOkAsync(_profileA, created.Id)).Versions.Single().LockedByApplicationId);
     }
@@ -342,7 +343,7 @@ public class ResumeEndpointsTests(SharedApiFactory factory) : IAsyncLifetime
     {
         // covers AC-8: an oversized upload is refused before it is read, not after
         var created = await CreateOkAsync(_profileA);
-        var tooBig = ("resume.pdf", new byte[WorkPilot.Api.Endpoints.ResumeEndpoints.MaxUploadRequestBytes + 1]);
+        var tooBig = ("resume.pdf", new byte[WorkPilot.Api.Endpoints.ProfileEndpoints.MaxUploadRequestBytes + 1]);
         var filesBefore = await CountFilesAsync();
 
         var create = await CreateAsync(_profileA, "name", "text", null, tooBig);

@@ -83,6 +83,8 @@ public class WorkPilotDbContext(
     // Approvals & audit
     public DbSet<Approval> Approvals => Set<Approval>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<OutboxDelivery> OutboxDeliveries => Set<OutboxDelivery>();
 
     // Integrations & notifications
     public DbSet<Integration> Integrations => Set<Integration>();

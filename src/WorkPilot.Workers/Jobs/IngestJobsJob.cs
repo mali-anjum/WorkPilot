@@ -1,9 +1,6 @@
 using Hangfire;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WorkPilot.Application.Modules.Jobs;
-using WorkPilot.Infrastructure.Modules.Jobs;
 
 namespace WorkPilot.Workers.Jobs;
 
@@ -55,18 +52,5 @@ public sealed class ReconcileJobsJob(JobDedupService dedup, ILogger<ReconcileJob
     {
         var merged = await dedup.ReconcileAsync(CancellationToken.None);
         logger.LogInformation("Job reconcile finished: merged {Merged} jobs.", merged);
-    }
-}
-
-/// <summary>DI entry point for job source ingestion (specs 0008, 0017): the infrastructure plus its background jobs.</summary>
-public static class JobIngestionRegistration
-{
-    /// <summary>Registers job ingestion and deduplication (sources, repository, use cases) and their background jobs.</summary>
-    public static IServiceCollection AddJobIngestion(this IServiceCollection services, IConfiguration configuration)
-    {
-        services.AddJobIngestionInfrastructure(configuration);
-        services.AddScoped<IngestJobsJob>();
-        services.AddScoped<ReconcileJobsJob>();
-        return services;
     }
 }

@@ -3,17 +3,12 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using WorkPilot.Application.Modules.Profile.Resumes;
+using WorkPilot.Web.Features.Common;
 
-namespace WorkPilot.Web.Features.Resumes;
+namespace WorkPilot.Web.Features.Profile;
 
 /// <summary>A file picked in the browser, already read into memory, to send with a create or revise.</summary>
 public sealed record ResumeUpload(string FileName, byte[] Content);
-
-/// <summary>The outcome of a resume write made through the Api: a value, or a message to show the user.</summary>
-public sealed record ResumeApiResult<T>(T? Value, string? Error)
-{
-    public bool Succeeded => Error is null && Value is not null;
-}
 
 /// <summary>
 /// The Web host's typed client for the internal resume endpoints (spec 0009). Pages call this rather
@@ -25,11 +20,11 @@ public interface IResumesApiClient
 
     Task<ResumeDetailDto?> GetAsync(Guid profileId, Guid resumeId, CancellationToken cancellationToken = default);
 
-    Task<ResumeApiResult<ResumeDetailDto>> CreateAsync(Guid profileId, string name, string content, string? note, ResumeUpload? file, CancellationToken cancellationToken = default);
+    Task<ApiResult<ResumeDetailDto>> CreateAsync(Guid profileId, string name, string content, string? note, ResumeUpload? file, CancellationToken cancellationToken = default);
 
-    Task<ResumeApiResult<ReviseResumeResultDto>> ReviseAsync(Guid profileId, Guid resumeId, string content, string? note, ResumeUpload? file, bool removeFile, CancellationToken cancellationToken = default);
+    Task<ApiResult<ReviseResumeResultDto>> ReviseAsync(Guid profileId, Guid resumeId, string content, string? note, ResumeUpload? file, bool removeFile, CancellationToken cancellationToken = default);
 
-    Task<ResumeApiResult<ResumeDetailDto>> TailorAsync(Guid profileId, Guid sourceVersionId, string name, string targetCompany, CancellationToken cancellationToken = default);
+    Task<ApiResult<ResumeDetailDto>> TailorAsync(Guid profileId, Guid sourceVersionId, string name, string targetCompany, CancellationToken cancellationToken = default);
 
     /// <summary>The raw Api response for a version's file (the caller streams and disposes it), or null when not found.</summary>
     Task<HttpResponseMessage?> DownloadAsync(Guid profileId, Guid versionId, CancellationToken cancellationToken = default);
@@ -60,7 +55,7 @@ public sealed class ResumesApiClient(IHttpClientFactory httpClientFactory) : IRe
     }
 
     /// <inheritdoc />
-    public async Task<ResumeApiResult<ResumeDetailDto>> CreateAsync(Guid profileId, string name, string content, string? note, ResumeUpload? file, CancellationToken cancellationToken = default)
+    public async Task<ApiResult<ResumeDetailDto>> CreateAsync(Guid profileId, string name, string content, string? note, ResumeUpload? file, CancellationToken cancellationToken = default)
     {
         using var form = Form(profileId, content, note, file);
         form.Add(new StringContent(name), "name");
@@ -69,7 +64,7 @@ public sealed class ResumesApiClient(IHttpClientFactory httpClientFactory) : IRe
     }
 
     /// <inheritdoc />
-    public async Task<ResumeApiResult<ReviseResumeResultDto>> ReviseAsync(Guid profileId, Guid resumeId, string content, string? note, ResumeUpload? file, bool removeFile, CancellationToken cancellationToken = default)
+    public async Task<ApiResult<ReviseResumeResultDto>> ReviseAsync(Guid profileId, Guid resumeId, string content, string? note, ResumeUpload? file, bool removeFile, CancellationToken cancellationToken = default)
     {
         using var form = Form(profileId, content, note, file);
         form.Add(new StringContent(removeFile ? "true" : "false"), "removeFile");
@@ -78,7 +73,7 @@ public sealed class ResumesApiClient(IHttpClientFactory httpClientFactory) : IRe
     }
 
     /// <inheritdoc />
-    public async Task<ResumeApiResult<ResumeDetailDto>> TailorAsync(Guid profileId, Guid sourceVersionId, string name, string targetCompany, CancellationToken cancellationToken = default)
+    public async Task<ApiResult<ResumeDetailDto>> TailorAsync(Guid profileId, Guid sourceVersionId, string name, string targetCompany, CancellationToken cancellationToken = default)
     {
         using var response = await Api.PostAsJsonAsync(
             "/internal/resumes/tailored",
@@ -126,39 +121,6 @@ public sealed class ResumesApiClient(IHttpClientFactory httpClientFactory) : IRe
         return form;
     }
 
-    private static async Task<ResumeApiResult<T>> ReadAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
-    {
-        if (response.IsSuccessStatusCode)
-        {
-            return new ResumeApiResult<T>(await response.Content.ReadFromJsonAsync<T>(Json, cancellationToken), null);
-        }
-
-        return response.StatusCode switch
-        {
-            HttpStatusCode.NotFound => new ResumeApiResult<T>(default, "That resume no longer exists."),
-            HttpStatusCode.BadRequest or HttpStatusCode.Conflict => new ResumeApiResult<T>(default, await ErrorMessageAsync(response, cancellationToken)),
-            _ => new ResumeApiResult<T>(default, $"The request failed ({(int)response.StatusCode})."),
-        };
-    }
-
-    // Both a validation problem and the 409 body carry { errors: { field: [messages] } }.
-    private static async Task<string> ErrorMessageAsync(HttpResponseMessage response, CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-            if (doc.RootElement.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Object)
-            {
-                var messages = errors.EnumerateObject()
-                    .SelectMany(p => p.Value.EnumerateArray().Select(m => m.GetString()))
-                    .Where(m => !string.IsNullOrWhiteSpace(m));
-                return string.Join(" ", messages);
-            }
-        }
-        catch (JsonException)
-        {
-        }
-
-        return "The request was rejected.";
-    }
+    private static Task<ApiResult<T>> ReadAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken) =>
+        ApiResultReader.ReadAsync<T>(response, "That resume no longer exists.", cancellationToken);
 }

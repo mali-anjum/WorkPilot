@@ -11,14 +11,14 @@ namespace WorkPilot.Web.Features.Approvals;
 /// circuit. The deciding profile always comes from the signed in session's
 /// <c>profile_id</c> claim, never from the form.
 /// </summary>
-public static class ApprovalCenterEndpoints
+public static class ApprovalsWebExtensions
 {
     /// <summary>Registers what the Approval center needs in the Web host.</summary>
-    public static IServiceCollection AddApprovalCenter(this IServiceCollection services) =>
+    public static IServiceCollection AddApprovalsWeb(this IServiceCollection services) =>
         services.AddScoped<IApprovalCenterClient, ApprovalCenterClient>();
 
     /// <summary>Maps <c>POST /approvals/{id}/decide</c>; requires a signed in session.</summary>
-    public static IEndpointRouteBuilder MapApprovalCenterEndpoints(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapApprovalsWebEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/approvals/{id:guid}/decide", async (
             Guid id,

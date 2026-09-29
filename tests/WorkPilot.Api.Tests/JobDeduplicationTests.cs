@@ -7,6 +7,7 @@ using WorkPilot.Application.Modules.Jobs;
 using WorkPilot.Domain.Modules.Jobs;
 using WorkPilot.Infrastructure.Modules.Agent;
 using WorkPilot.Infrastructure.Modules.Applications;
+using WorkPilot.Infrastructure.Modules.Audit;
 using WorkPilot.Infrastructure.Modules.Jobs;
 using WorkPilot.Infrastructure.Persistence;
 

@@ -21,10 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Job source ingestion (spec 0008): the `IJobSource` seam, a Greenhouse adapter, a normalizer, snapshots, and trigger and read endpoints.
 - Resume management (spec 0009): base and tailored resumes with versions, file upload and download, and versions locked forever once an application uses them.
 - Job deduplication (spec 0017): jobs identified by their source links, merged across sources by a match key, with split, reconcile, and a Lever adapter.
+- Module contracts groundwork (spec 0018, Wave 0): a transactional outbox for domain events (`app.outbox_messages`, `app.outbox_deliveries`) with a dispatcher, exactly once handling per handler, and an every minute sweep; the first catalog events (`ApprovalRequested`, `ApprovalDecided`, `AgentRunFailed`); `Result<T>` for use case outcomes; and one `Add<Module>Module`/`Map<Module>Endpoints` pair per module in both `Program.cs` files.
 
 ### Changed
 - The whole Blazor app now renders InteractiveServer, set once on `<Routes>` (spec 0016); Auto never worked, since every routed page lives in the server project.
 - Upgraded bUnit to 2.11.3 in the Web tests, which drops the vulnerable AngleSharp 1.2.0.
+- Every Api error is now RFC 7807 ProblemDetails (spec 0018): expected failures map from `Result<T>`, unexpected ones become a logged 500, and a bodyless error gets a ProblemDetails body. The approval decide endpoint keeps its status codes with ProblemDetails bodies, and the Web reads every failure through one `ApiResultReader`.
+- `IAuditService` moved from the Agent module to the Audit module, and the Web resume feature folder is now `Features/Profile`.
 
 ### Fixed
 - The agent run job no longer crashes when an approval decision changes the same run at the same moment; it logs a warning and runs again on fresh data a second later.

@@ -1,20 +1,20 @@
 using System.Security.Claims;
 using WorkPilot.Web.Client;
 
-namespace WorkPilot.Web.Features.Resumes;
+namespace WorkPilot.Web.Features.Profile;
 
-/// <summary>Web host wiring for resume management (spec 0009).</summary>
-public static class ResumeWebExtensions
+/// <summary>Web host wiring for the Profile module: resume management (spec 0009).</summary>
+public static class ProfileWebExtensions
 {
     /// <summary>Registers the typed resume Api client the pages use.</summary>
-    public static IServiceCollection AddResumeManagementWeb(this IServiceCollection services) =>
+    public static IServiceCollection AddProfileWeb(this IServiceCollection services) =>
         services.AddScoped<IResumesApiClient, ResumesApiClient>();
 
     /// <summary>
     /// Maps <c>GET /resumes/versions/{versionId}/file</c>: streams a version's stored file from the
     /// internal Api to the signed in founder, always as a download (spec 0009, AC-7).
     /// </summary>
-    public static IEndpointRouteBuilder MapResumeFileEndpoints(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapProfileWebEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/resumes/versions/{versionId:guid}/file", async (Guid versionId, HttpContext ctx, IResumesApiClient resumes) =>
         {

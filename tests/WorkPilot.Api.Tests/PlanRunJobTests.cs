@@ -7,6 +7,8 @@ using WorkPilot.Domain.Modules.Agent;
 using WorkPilot.Domain.Modules.Audit;
 using WorkPilot.Domain.Modules.Profile;
 using WorkPilot.Infrastructure.Modules.Agent;
+using WorkPilot.Infrastructure.Modules.Audit;
+using WorkPilot.Infrastructure.Modules.Audit.Outbox;
 using WorkPilot.Infrastructure.Persistence;
 using WorkPilot.Workers.Agent;
 
@@ -99,6 +101,58 @@ public class PlanRunJobTests(SharedApiFactory factory)
         Assert.Equal("gemini", payload.RootElement.GetProperty("provider").GetString());
     }
 
+    // covers spec 0018 event catalog: every way planning fails a run publishes AgentRunFailed with its reason.
+    [Fact]
+    public async Task RunAsync_WhenTheProviderFails_PublishesAgentRunFailedWithTheReason()
+    {
+        var failure = new AiProviderException("Planner", "deepseek", "deepseek-chat", "Status 503");
+
+        var events = await PlanAndReadEventsAsync(new ThrowingPlanner(failure));
+
+        var failed = Assert.Single(events);
+        Assert.Equal(AgentRunFailed.EventName, failed.EventName);
+        Assert.Equal(AgentRunFailureReasons.ProviderError, OutboxTestHelpers.Property(failed, "reason"));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenThePlanBreaksPolicy_PublishesAgentRunFailedAsAPolicyViolation()
+    {
+        var plan = new AgentPlan([new PlannedToolCall("does_not_exist", new Dictionary<string, string>())]);
+
+        var events = await PlanAndReadEventsAsync(new FixedPlanner(plan));
+
+        Assert.Equal(AgentRunFailureReasons.PolicyViolation, OutboxTestHelpers.Property(Assert.Single(events), "reason"));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenThePlanIsAccepted_PublishesNoEvent()
+    {
+        var plan = new AgentPlan([new PlannedToolCall("needs_query", new Dictionary<string, string> { ["query"] = "ok" })]);
+
+        Assert.Empty(await PlanAndReadEventsAsync(new FixedPlanner(plan)));
+    }
+
+    private async Task<List<WorkPilot.Domain.Modules.Audit.OutboxMessage>> PlanAndReadEventsAsync(IPlanner planner)
+    {
+        await using var db = CreateDbContext();
+        var (runId, profileId) = await SeedPlanningRunAsync(db);
+
+        try
+        {
+            var jobs = factory.Services.CreateScope().ServiceProvider.GetRequiredService<IBackgroundJobClient>();
+            await new PlanRunJob(db, planner, new ToolRegistry(Tools), new PolicyEngine(), jobs, new AuditService(db), new EventPublisher(db, TimeProvider.System)).RunAsync(runId);
+
+            await using var verifyDb = CreateDbContext();
+            return await OutboxTestHelpers.EventsMentioningAsync(verifyDb, runId);
+        }
+        finally
+        {
+            await using var cleanup = CreateDbContext();
+            await OutboxTestHelpers.DeleteEventsMentioningAsync(cleanup, runId);
+            await CleanupAsync(profileId);
+        }
+    }
+
     private const string SecretGoal = "GOAL-TEXT-MUST-NOT-BE-AUDITED";
 
     private async Task<(AgentRunStatus RunStatus, List<AuditLog> Audits)> PlanWithFailureAsync(IPlanner planner)
@@ -109,7 +163,7 @@ public class PlanRunJobTests(SharedApiFactory factory)
         try
         {
             var jobs = factory.Services.CreateScope().ServiceProvider.GetRequiredService<IBackgroundJobClient>();
-            var job = new PlanRunJob(db, planner, new ToolRegistry(Tools), new PolicyEngine(), jobs, new AuditService(db));
+            var job = new PlanRunJob(db, planner, new ToolRegistry(Tools), new PolicyEngine(), jobs, new AuditService(db), new EventPublisher(db, TimeProvider.System));
 
             await job.RunAsync(runId);
 
@@ -132,7 +186,7 @@ public class PlanRunJobTests(SharedApiFactory factory)
         try
         {
             var jobs = factory.Services.CreateScope().ServiceProvider.GetRequiredService<IBackgroundJobClient>();
-            var job = new PlanRunJob(db, new FixedPlanner(plan), new ToolRegistry(Tools), new PolicyEngine(), jobs, new AuditService(db));
+            var job = new PlanRunJob(db, new FixedPlanner(plan), new ToolRegistry(Tools), new PolicyEngine(), jobs, new AuditService(db), new EventPublisher(db, TimeProvider.System));
 
             await job.RunAsync(runId);
 

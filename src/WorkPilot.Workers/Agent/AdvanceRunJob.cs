@@ -2,7 +2,9 @@ using System.Text.Json;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using WorkPilot.Application.Common;
 using WorkPilot.Application.Modules.Agent;
+using WorkPilot.Application.Modules.Audit;
 using WorkPilot.Domain.Modules.Agent;
 using WorkPilot.Domain.Modules.Approvals;
 using WorkPilot.Infrastructure.Modules.Agent;
@@ -22,6 +24,7 @@ public sealed class AdvanceRunJob(
     IToolRegistry registry,
     IVerificationEngine verification,
     IAuditService audit,
+    IEventPublisher events,
     IBackgroundJobClient jobs,
     ILogger<AdvanceRunJob> logger)
 {
@@ -202,15 +205,17 @@ public sealed class AdvanceRunJob(
         var evidenceJson = await DescribeEvidenceAsync(tool, new ToolExecutionContext(run.ProfileId, ParseArguments(step)));
 
         step.TransitionTo(AgentStepStatus.AwaitingApproval);
-        db.Approvals.Add(new Approval
+        var approval = new Approval
         {
             TargetType = ApprovalTargets.AgentStep,
             TargetId = step.Id,
             RiskTier = tool.RiskTier.ToString(),
             EvidenceJson = evidenceJson,
-        });
+        };
+        db.Approvals.Add(approval);
         run.TransitionTo(AgentRunStatus.AwaitingApproval);
         audit.Record("Agent", "ApprovalRequested", ApprovalTargets.AgentStep, step.Id, evidenceJson);
+        events.Publish(new ApprovalRequested(approval.Id, approval.TargetType, approval.TargetId));
         await WorkflowMirror.SyncAsync(db, run, CancellationToken.None);
         await db.SaveChangesAsync();
         // No job re-enqueued: POST /internal/agent/approvals/{id}/decide resumes this run.
@@ -265,6 +270,7 @@ public sealed class AdvanceRunJob(
             },
             JsonSerializerOptions.Web);
         audit.Record("Agent", "ApprovalGateRefused", ApprovalTargets.AgentStep, step.Id, payload);
+        events.Publish(new AgentRunFailed(run.Id, AgentRunFailureReasons.ApprovalGateRefused));
         await WorkflowMirror.SyncAsync(db, run, CancellationToken.None);
         await db.SaveChangesAsync();
     }
@@ -278,6 +284,7 @@ public sealed class AdvanceRunJob(
     {
         step.TransitionTo(AgentStepStatus.Failed);
         run.TransitionTo(AgentRunStatus.Failed);
+        events.Publish(new AgentRunFailed(run.Id, AgentRunFailureReasons.StepFailed));
         await WorkflowMirror.SyncAsync(db, run, CancellationToken.None);
         await db.SaveChangesAsync();
     }

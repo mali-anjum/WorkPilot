@@ -390,6 +390,53 @@ namespace WorkPilot.Infrastructure.Persistence.Migrations
                     b.ToTable("audit_logs", "app");
                 });
 
+            modelBuilder.Entity("WorkPilot.Domain.Modules.Audit.OutboxDelivery", b =>
+                {
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("HandlerKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("HandledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("MessageId", "HandlerKey");
+
+                    b.ToTable("outbox_deliveries", "app");
+                });
+
+            modelBuilder.Entity("WorkPilot.Domain.Modules.Audit.OutboxMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("DispatchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OccurredAt")
+                        .HasDatabaseName("IX_outbox_messages_undispatched")
+                        .HasFilter("\"DispatchedAt\" IS NULL");
+
+                    b.ToTable("outbox_messages", "app");
+                });
+
             modelBuilder.Entity("WorkPilot.Domain.Modules.Calendar.CalendarEvent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1381,6 +1428,15 @@ namespace WorkPilot.Infrastructure.Persistence.Migrations
                         .WithMany("Events")
                         .HasForeignKey("JobApplicationId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("WorkPilot.Domain.Modules.Audit.OutboxDelivery", b =>
+                {
+                    b.HasOne("WorkPilot.Domain.Modules.Audit.OutboxMessage", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

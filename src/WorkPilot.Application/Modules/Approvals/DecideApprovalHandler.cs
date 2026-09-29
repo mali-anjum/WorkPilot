@@ -1,5 +1,7 @@
 using System.Text.Json;
+using WorkPilot.Application.Common;
 using WorkPilot.Application.Modules.Agent;
+using WorkPilot.Application.Modules.Audit;
 using WorkPilot.Domain.Modules.Agent;
 using WorkPilot.Domain.Modules.Approvals;
 
@@ -39,6 +41,7 @@ public sealed record DecideApprovalResult(DecideApprovalOutcome Outcome, Guid Ap
 public sealed class DecideApprovalHandler(
     IApprovalRepository approvals,
     IAuditService audit,
+    IEventPublisher events,
     IAgentRunScheduler scheduler,
     TimeProvider time)
 {
@@ -112,6 +115,11 @@ public sealed class DecideApprovalHandler(
             },
             JsonSerializerOptions.Web);
         audit.Record(command.DecidedBy.ToString(), $"Approval{status}", ApprovalTargets.AgentStep, step.Id, payload);
+        events.Publish(new ApprovalDecided(approval.Id, status.ToString()));
+        if (!approve)
+        {
+            events.Publish(new AgentRunFailed(run.Id, AgentRunFailureReasons.ApprovalRejected));
+        }
 
         var saved = await approvals.SaveDecisionAsync(context, cancellationToken);
         switch (saved)

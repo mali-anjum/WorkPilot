@@ -300,6 +300,102 @@ public class ApprovalEndpointsTests(SharedApiFactory factory)
         }
     }
 
+    // covers spec 0018 event catalog: a decision publishes ApprovalDecided; a rejection also fails the run.
+    [Theory]
+    [InlineData("Approve", "Approved", false)]
+    [InlineData("Reject", "Rejected", true)]
+    public async Task Decide_PublishesTheCatalogEventsOnce(string decision, string expectedStatus, bool runFails)
+    {
+        using var client = factory.CreateClient();
+        var profileId = await CreateProfileAsync();
+        var seeded = await SeedAwaitingApprovalRunAsync(profileId, ApprovalTool, ToolRiskTier.ApprovalRequired);
+
+        try
+        {
+            await DecideAsync(client, seeded.ApprovalId, decision, profileId);
+            await DecideAsync(client, seeded.ApprovalId, decision, profileId); // a replay publishes nothing more
+
+            await using var db = CreateDbContext();
+            var decided = Assert.Single(await OutboxTestHelpers.EventsMentioningAsync(db, seeded.ApprovalId));
+            Assert.Equal(ApprovalDecided.EventName, decided.EventName);
+            Assert.Equal(expectedStatus, OutboxTestHelpers.Property(decided, "status"));
+
+            var runEvents = await OutboxTestHelpers.EventsMentioningAsync(db, seeded.RunId);
+            if (runFails)
+            {
+                Assert.Equal(AgentRunFailureReasons.ApprovalRejected, OutboxTestHelpers.Property(Assert.Single(runEvents), "reason"));
+            }
+            else
+            {
+                Assert.Empty(runEvents);
+            }
+        }
+        finally
+        {
+            await using var cleanup = CreateDbContext();
+            await OutboxTestHelpers.DeleteEventsMentioningAsync(cleanup, seeded.ApprovalId);
+            await OutboxTestHelpers.DeleteEventsMentioningAsync(cleanup, seeded.RunId);
+            await CleanupAsync(profileId);
+        }
+    }
+
+    // covers spec 0018 section 4: every decide refusal keeps its status and is ProblemDetails with a detail.
+    [Fact]
+    public async Task Decide_ASecondDecision_IsAConflictProblemWithADetail()
+    {
+        using var client = factory.CreateClient();
+        var profileId = await CreateProfileAsync();
+        var seeded = await SeedAwaitingApprovalRunAsync(profileId, ApprovalTool, ToolRiskTier.ApprovalRequired);
+
+        try
+        {
+            await DecideAsync(client, seeded.ApprovalId, "Reject", profileId);
+            var response = await DecideAsync(client, seeded.ApprovalId, "Reject", profileId);
+
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("This approval was already decided.", body.GetProperty("detail").GetString());
+        }
+        finally
+        {
+            await using var cleanup = CreateDbContext();
+            await OutboxTestHelpers.DeleteEventsMentioningAsync(cleanup, seeded.ApprovalId);
+            await OutboxTestHelpers.DeleteEventsMentioningAsync(cleanup, seeded.RunId);
+            await CleanupAsync(profileId);
+        }
+    }
+
+    // covers: AC-9: a decision that lost the race publishes nothing (the outbox row was in the discarded unit of work).
+    [Fact]
+    public async Task Decide_ThatLosesARace_PublishesNoEvent()
+    {
+        using var client = factory.CreateClient();
+        var profileId = await CreateProfileAsync();
+        var seeded = await SeedAwaitingApprovalRunAsync(profileId, ApprovalTool, ToolRiskTier.ApprovalRequired);
+
+        try
+        {
+            await using (var lockDb = CreateDbContext())
+            {
+                await using var transaction = await lockDb.Database.BeginTransactionAsync();
+                await lockDb.Database.ExecuteSqlAsync($"""update app.agent_runs set "Goal" = "Goal" where "Id" = {seeded.RunId}""");
+                var decide = DecideAsync(client, seeded.ApprovalId, "Reject", profileId);
+                await Task.Delay(TimeSpan.FromSeconds(1.5));
+                await transaction.CommitAsync();
+                Assert.Equal(HttpStatusCode.Conflict, (await decide).StatusCode);
+            }
+
+            await using var db = CreateDbContext();
+            Assert.Empty(await OutboxTestHelpers.EventsMentioningAsync(db, seeded.ApprovalId));
+            Assert.Empty(await OutboxTestHelpers.EventsMentioningAsync(db, seeded.RunId));
+        }
+        finally
+        {
+            await CleanupAsync(profileId);
+        }
+    }
+
     // covers: AC-9
     [Fact]
     public async Task Decide_WhileAnotherTransactionChangesTheRun_Returns409AndLeavesNoPartialState()

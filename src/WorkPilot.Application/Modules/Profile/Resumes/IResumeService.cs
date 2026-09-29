@@ -1,3 +1,4 @@
+using WorkPilot.Application.Common;
 namespace WorkPilot.Application.Modules.Profile.Resumes;
 
 /// <summary>
@@ -14,19 +15,19 @@ public interface IResumeService
     Task<ResumeDetailDto?> GetAsync(Guid profileId, Guid resumeId, CancellationToken cancellationToken);
 
     /// <summary>Creates a base resume with version 1 as a draft (AC-1).</summary>
-    Task<ResumeResult<ResumeDetailDto>> CreateAsync(CreateResumeCommand command, CancellationToken cancellationToken);
+    Task<Result<ResumeDetailDto>> CreateAsync(CreateResumeCommand command, CancellationToken cancellationToken);
 
     /// <summary>Creates a tailored resume copied from one of the profile's versions (AC-6).</summary>
-    Task<ResumeResult<ResumeDetailDto>> TailorAsync(TailorResumeCommand command, CancellationToken cancellationToken);
+    Task<Result<ResumeDetailDto>> TailorAsync(TailorResumeCommand command, CancellationToken cancellationToken);
 
     /// <summary>Edits the resume: updates the draft in place, or appends a new version when the newest is locked (AC-2, AC-4, AC-10).</summary>
-    Task<ResumeResult<ReviseResumeResultDto>> ReviseAsync(ReviseResumeCommand command, CancellationToken cancellationToken);
+    Task<Result<ReviseResumeResultDto>> ReviseAsync(ReviseResumeCommand command, CancellationToken cancellationToken);
 
     /// <summary>
     /// Locks a version because an application used it (AC-3). Feature 17 can call this, or call
     /// <c>ResumeVersion.Lock</c> itself inside its own unit of work.
     /// </summary>
-    Task<ResumeResult<ResumeVersionDto>> LockVersionAsync(Guid profileId, Guid versionId, Guid applicationId, CancellationToken cancellationToken);
+    Task<Result<ResumeVersionDto>> LockVersionAsync(Guid profileId, Guid versionId, Guid applicationId, CancellationToken cancellationToken);
 
     /// <summary>A version's stored file, or null when the version is not found or has no file (AC-7).</summary>
     Task<ResumeFileDownload?> GetFileAsync(Guid profileId, Guid versionId, CancellationToken cancellationToken);
