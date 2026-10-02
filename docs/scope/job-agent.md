@@ -37,17 +37,17 @@ Same job from multiple sources collapses to one canonical Job with multiple sour
 ### 11. Job matching engine & scoring · needs a decision
 Scores a canonical Job against the user's Profile (skills, experience, education, location, remote preference, salary, technology, job type, work authorization). Output must be explainable: score, confidence, evidence, missing requirements, unknown information.
 **Done when:** a job's match score is displayed with a "why it matches" list backed by real evidence pointers, not a black box number.
-- [ ] Design it (spec): `/architect job matching engine & scoring`
+- [ ] Design it (spec): `/architect job matching engine & scoring` (Wave 1, spec 0018 section 9)
 
 ### 12. Jobs list & job detail
 `/jobs` list with filters (location, remote, salary, experience, technology, company, job type, source, match score, date posted, visa sponsorship) and the two column job detail (job info + agent analysis) per the product spec.
 **Done when:** the list is filterable and sortable against real matched jobs, and detail shows the explainable match analysis from feature 11.
-- [ ] Design it (spec): `/develop jobs list & job detail`
+- [ ] Design it (spec): `/architect jobs list & job detail` (Wave 1, spec 0018 section 9)
 
 ### 13. Dashboard overview
 `/` answers "what needs attention right now": pipeline counts, today's priorities, upcoming interviews/follow-ups, recent agent activity.
 **Done when:** the dashboard reflects real application pipeline counts and at least one live "today's priorities" item sourced from real state.
-- [ ] Design it (spec): `/develop dashboard overview`
+- [ ] Design it (spec): `/architect dashboard overview` (Wave 1, spec 0018 section 9)
 
 ### 14. Resume management · done
 Immutable resume versions once used in an application; base resume plus tailored/company-specific versions.
@@ -85,9 +85,9 @@ The highest risk feature in the product. Browser worker (Playwright class toolin
 ### 19. Activity feed & audit log
 `/activity` timeline of everything the Agent and user did, filterable by domain (Agent, Jobs, Email, Calendar, System, Errors).
 **Done when:** every meaningful action anywhere in the product (who, what, when, why, target, result, evidence) shows up here.
-- [ ] Design it (spec): `/develop activity feed & audit log`
+- [ ] Design it (spec): `/architect activity feed & audit log` (Wave 1, spec 0018 section 9)
 
 ### 20. Notifications
 Approval required, application submitted/failed, reply received, interview upcoming, deadline approaching, workflow failed, integration expired; priority levels (Info/Success/Warning/Action Required/Error).
 **Done when:** at least the approval-required and application-outcome notifications fire in real time off real events.
-- [ ] Design it (spec): `/develop notifications`
+- [ ] Design it (spec): `/architect notifications` (Wave 1, spec 0018 section 9)

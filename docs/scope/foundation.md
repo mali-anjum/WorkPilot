@@ -191,3 +191,17 @@ Enforces the three tier policy: auto allowed (read/search/analyze/classify/dedup
 - [x] Test it: `/test approval engine & approval center`
 - [x] Review it (fresh model): `/check review approval engine & approval center`
 - [x] Document it: `/document approval engine & approval center`
+
+### 34. Module contracts groundwork · done
+The shared plumbing every remaining feature plugs into (Wave 0 of spec 0018): one `Result<T>` plus ProblemDetails error shape, the transactional outbox (`outbox_messages`, `outbox_deliveries`, dispatcher, sweep) with `IEventPublisher`/`IEventHandler<T>`, alphabetical module blocks in both `Program.cs` files, `AddRecurringJob`/`ApplyRecurringJobs`, and the catalog events Approvals and Agent raise. No product behavior change.
+**Done when:** every existing module is wired through one `Add<Module>Module` and one `Map<Module>Endpoints` line, every endpoint failure is ProblemDetails, and a published event reaches its handler exactly once through the outbox.
+- [x] Design it (spec): `/architect module contracts` → [0018](../specs/0018-module-contracts/index.md)
+- [x] Build it: `/develop module contracts groundwork`
+  - [x] `Result<T>` + `ToHttp` + `ApiResultReader`, `ResumeResult<T>` migrated
+  - [x] Outbox tables (`AddModuleContracts`), interceptor, `DispatchOutboxJob`, `HandleEventJob`, `EventRegistry`, sweep
+  - [x] Module blocks and `Add<Module>Module`/`Map<Module>Endpoints` for Agent, Applications, Approvals, Audit, Jobs, Profile; Approvals and Agent raise catalog events
+- [x] Verify it: `/check verify module contracts groundwork`
+- [x] Test it: `/test module contracts groundwork`
+- [x] Review it (fresh model): `/check review module contracts groundwork` → [review](../reviews/2026-09-29-feat-module-contracts.md)
+- [x] Document it: `/document changelog`
+Spec 0018 · merged via PR #11 · code in `src/WorkPilot.Workers/Audit/`, `src/WorkPilot.Application/Common/Result.cs`, `src/WorkPilot.Api/Common/ResultHttpExtensions.cs`
