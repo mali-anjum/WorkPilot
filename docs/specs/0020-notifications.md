@@ -92,7 +92,7 @@ Domain (`WorkPilot.Domain/Modules/Notifications/`): `Notification.Create(...)`, 
 |---|---|---|
 | `notifications.on-approval-requested` | `ApprovalRequested` | `Approval` → its `AgentStep` → `AgentRun.ProfileId` (read only); tool name and goal from the step and run |
 | `notifications.on-agent-run-failed` | `AgentRunFailed` | `AgentRun.ProfileId`; goal from the run |
-| `notifications.on-job-matched` | `JobMatched` | `JobMatched.ProfileId`; title/company from `jobs`, threshold from `IMatchPreferencesQuery` (spec 0019) |
+| `notifications.on-job-matched` | `JobMatched` | `JobMatched.ProfileId`; title/company from `jobs`, threshold from `profiles.StrongMatchThreshold` (spec 0019) |
 
 The digest handler loads today's unread digest with `SELECT … FOR UPDATE` (row lock inside the handler transaction) and updates it, or inserts one. A concurrent insert that hits the partial unique index throws, the handler's Hangfire retry then finds the row and updates it. A missing approval, run or job (deleted since) makes the handler return without writing; it does not fail.
 
@@ -122,7 +122,7 @@ Web: `AddNotificationsWeb()` registers `NotificationsApiClient`; `NotificationBe
 | Run failed notification | profile, reason, goal | event `Reason` mapped by a Domain `AgentRunFailureReasons.Describe`; `agent_runs.Goal`, `ProfileId` |
 | Digest | day | the event handling time in UTC (`TimeProvider`), `yyyy-MM-dd` |
 | Digest | jobs listed, score | event `JobId`, `Score`; `jobs.Title`, `jobs.Company` |
-| Digest link | threshold | `IMatchPreferencesQuery` (spec 0019), 70 if none |
+| Digest link | threshold | `profiles.StrongMatchThreshold` (spec 0019, default 70) |
 | Bell and list | profile | Web claim (`ProfileWebExtensions.ProfileId`), never user input |
 | Relative time | local time | `BrowserTimeZone` (spec 0011) |
 | Cleanup | cutoff | now (UTC) minus 90 days, `Notifications:ReadRetentionDays` option (default 90, validated 1 to 3650 at start) |

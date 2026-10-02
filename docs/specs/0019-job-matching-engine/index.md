@@ -2,10 +2,11 @@
 
 **Date**: 2026-09-30
 **Status**: Proposed
+**Updated**: 2026-10-02 (merged in the 2026-09-29 draft `0019-job-matching-scoring`: title dimension, strong match threshold and the `JobMatched` event)
 
 ## Summary
 
-Every job gets a match score from 0 to 100 against your profile, with a confidence level and a "why it matches" list where every line points at real evidence: a sentence quoted from the posting and the profile item that meets it. An AI model reads each job description once and pulls out its requirements as structured data; plain C# code then does the scoring, so the same inputs always give the same score and every point can be traced. Scoring runs by itself when a job arrives or changes and when you save your profile, and this feature also adds a small `/profile` page (so the inputs are real) plus a minimal `/jobs` list and `/jobs/{id}` match panel (feature 12 thickens both later).
+Every job gets a match score from 0 to 100 against your profile, with a confidence level and a "why it matches" list where every line points at real evidence: a sentence quoted from the posting and the profile item that meets it. An AI model reads each job description once and pulls out its requirements as structured data; plain C# code then does the scoring, so the same inputs always give the same score and every point can be traced. When a job newly reaches your strong match threshold, matching raises `JobMatched`, which notifications (spec 0020) turn into an alert. Scoring runs by itself when a job arrives or changes and when you save your profile, and this feature also adds a small `/profile` page (so the inputs are real) plus a minimal `/jobs` list and `/jobs/{id}` match panel (feature 12 thickens both later).
 
 ## Requirements
 
@@ -14,10 +15,11 @@ Every job gets a match score from 0 to 100 against your profile, with a confiden
 - As the founder, I want to see why a job scored what it did, with the exact posting text and profile item behind each point, so that I can trust or challenge the number.
 - As the founder, I want to see what a job asks for that I lack, and what it never said, so that I know the gaps and how sure the score is.
 - As the founder, I want to edit my match preferences, skills, experience and education in one place so that the score reflects me.
+- As the founder, I want to be told when a job newly becomes a strong match, so that I do not have to keep checking the list.
 
 **Acceptance criteria**:
 - **AC-1**: When a job is created, or its primary posting's content hash changes (including when a merge picks a new primary, and both jobs of a split), its requirements are extracted once for that content hash and its match is scored for every profile, with no manual action (domain event, then Hangfire jobs).
-- **AC-2**: A stored match has an integer `Score` 0 to 100 (null when unscored, see AC-3), a `Confidence` of High, Medium or Low, a `HasBlocker` flag, and an explanation listing each of the seven dimensions (skills, experience, location and remote, salary, education, job type, work authorization) with its status (Met, Partial, Missed, Unknown, Blocker), points earned out of its weight, the job evidence (verified quote) and the profile evidence (a pointer to the skill, experience, education row or preference that meets it).
+- **AC-2**: A stored match has an integer `Score` 0 to 100 (null when unscored, see AC-3), a `Confidence` of High, Medium or Low, a `HasBlocker` flag, and an explanation listing each of the eight dimensions (skills, title, experience, location and remote, salary, education, job type, work authorization) with its status (Met, Partial, Missed, Unknown, Blocker), points earned out of its weight, the job evidence (verified quote) and the profile evidence (a pointer to the skill, target role, experience, education row or preference that meets it).
 - **AC-3**: The score is the points earned over the known dimensions divided by the total weight of the known dimensions, times 100, rounded half away from zero. An Unknown dimension is left out of both sides and listed under "unknown information" with a reason (the job did not say, or your profile does not say). Confidence is High when known weight is at least 80 percent of total weight, Medium when at least 50 percent, else Low. When the known weight is 0 (every dimension Unknown), `Score` is null, Confidence is Low, and the job shows "not enough information to score".
 - **AC-4**: Every Required skill, the minimum years, and the degree level that your profile does not meet appear under "missing requirements", each with its quote.
 - **AC-5**: A dealbreaker (work authorization explicitly refused, or an onsite or hybrid job outside every preferred location while you accept Remote only) caps the score at `BlockerCap` (default 20), sets `HasBlocker`, and is listed as a blocker with its evidence.
@@ -26,12 +28,13 @@ Every job gets a match score from 0 to 100 against your profile, with a confiden
 - **AC-8**: When extraction fails 3 times (provider down, output that fails the schema), the requirements row is `Failed` with a reason, and the match is still scored from the job's own columns (location and remote type only; salary columns are never scored) with Confidence Low and a "requirements could not be read" notice. The Rescore action retries extraction, and the sweep retries `Failed` rows once a day.
 - **AC-9**: `/jobs` lists jobs that are not soft deleted, 25 per page, with title, company, score, confidence and a blocker badge, sorted by score descending, blocked jobs after unblocked ones, unscored jobs (no match row, or a null score) last, ties broken by `JobId`. When your profile has no skills or no experience, a banner links to `/profile`.
 - **AC-10**: `/jobs/{id}` shows the match panel: score, confidence, "why it matches" (Met and Partial items with evidence), missing requirements, unknown information, blockers, unverified items, the failure notice when AC-8 applies, and a Rescore button that reports it was queued (it forces a fresh extraction and rescores this profile; a click while extraction is already Pending queues nothing new).
-- **AC-11**: `/profile` edits match preferences (remote preference, preferred locations, job types, minimum salary and currency, authorized countries, needs sponsorship elsewhere), skills, experience rows and education rows (with degree level). Invalid input returns ProblemDetails field errors (currency is 3 letters ISO 4217, countries are 2 letter ISO 3166, end date not before start date, salary not negative). A save carrying a stale ETag gets 412 and the page says "changed elsewhere, reload" while keeping your edits on screen.
+- **AC-11**: `/profile` edits match preferences (target roles, remote preference, preferred locations, job types, minimum salary and currency, authorized countries, needs sponsorship elsewhere, strong match threshold 0 to 100, default 70), skills, experience rows and education rows (with degree level). Invalid input returns ProblemDetails field errors (currency is 3 letters ISO 4217, countries are 2 letter ISO 3166, end date not before start date, salary not negative, threshold 0 to 100, at most 20 target roles of 1 to 100 characters). A save carrying a stale ETag gets 412 and the page says "changed elsewhere, reload" while keeping your edits on screen.
 - **AC-12**: Extraction sends only the job description (truncated at `MaxDescriptionChars`, default 20000) to the `JobExtraction` AI purpose, with no tools, and never any profile data. Output that does not parse into the v1 schema or breaks its bounds (at most 60 skills, quotes at most 300 characters) counts as a failed attempt.
 - **AC-13**: With the committed `Fake` provider, extraction is deterministic: known skill names found in the description (each quoting its sentence), plus "N+ years", remote and salary patterns, so a fresh clone shows real looking scores with evidence and needs no key.
 - **AC-14**: When jobs merge, matches follow the surviving job (existing `ReassignMatchesAsync`), the removed job's requirements row goes with it, and the survivor is rescored if its primary content changed.
 - **AC-15**: Match reads are scoped to the given profile: asking for a job's match with a profile that has none returns 404 ProblemDetails, never another profile's match.
 - **AC-16**: The `Matching` config is validated at startup: weights are non negative integers summing to 100, `BlockerCap` is 0 to 100, confidence thresholds satisfy 0 < Medium < High <= 1, `MaxDescriptionChars` is positive. Bad config fails startup.
+- **AC-17**: When a write gives a job a non null `Score` at or above your `StrongMatchThreshold`, without a blocker, and the previous stored score for that (job, profile) was absent, null, below the threshold or blocked, `JobMatched(JobId, ProfileId, Score)` (`jobs.job-matched.v1`) is published in the same transaction as that write. Rescoring a job that was already strong does not raise it again; dropping below and crossing again raises it again. A write skipped by the fingerprint (AC-7) raises nothing.
 
 ## Decision
 
@@ -61,6 +64,8 @@ Reasoning and options: see [rationale.md](rationale.md).
 | `SalaryCurrency` | char(3) | yes | required when `MinSalary` is set |
 | `AuthorizedCountries` | text[] | no | ISO 3166 alpha 2, default `{}` |
 | `NeedsSponsorshipElsewhere` | boolean | no | default `true` |
+| `StrongMatchThreshold` | int | no | default 70, check 0 to 100; read by AC-17 and by notifications (spec 0020) |
+| `TargetRoles` | existing text list | no | reused, not new; first edited by the `/profile` page |
 | `UpdatedAt` | timestamptz | no | set on every match profile save, so the profile row (and its `xmin`) changes even when only a child row changed |
 | `xmin` | concurrency token | | the match profile ETag |
 
@@ -97,12 +102,13 @@ Requirements v1 document (every item carries `Quote`, a verbatim sentence from t
 | `RankedAt` | now updated on every rescore |
 | index | new (`ProfileId`, `HasBlocker`, `Score` desc) for the list |
 
-Explanation v1: `{ "v": 1, "Dimensions": [{ "Name", "Status", "Earned": decimal, "Weight", "Items": [Item] }], "Missing": [Item], "Unknown": [{ "Dimension", "Reason": "JobSilent"|"ProfileNotSet"|"CurrencyDiffers"|"ExtractionFailed"|"Unparseable" }], "Blockers": [Item & { "Dimension" }], "Unverified": [{ "Dimension", "Label", "JobQuote" }], "ExtractionFailed": bool }` where `Item = { "Label", "Status", "JobQuote"?, "Verified": bool, "ProfileRef"?: { "Kind": "Skill"|"Experience"|"Education"|"Preference", "Id"?, "Label" } }`. `Dimensions` always lists all seven in the fixed order skills, experience, location, salary, education, job type, work authorization. `JobQuote` is required for items taken from extraction; items built from job columns in the fallback have `JobQuote` null and `Verified` true. A dimension with status Blocker has `Earned` 0 and its full weight counted as known. Only the final score is rounded.
+Explanation v1: `{ "v": 1, "Dimensions": [{ "Name", "Status", "Earned": decimal, "Weight", "Items": [Item] }], "Missing": [Item], "Unknown": [{ "Dimension", "Reason": "JobSilent"|"ProfileNotSet"|"CurrencyDiffers"|"ExtractionFailed"|"Unparseable" }], "Blockers": [Item & { "Dimension" }], "Unverified": [{ "Dimension", "Label", "JobQuote" }], "ExtractionFailed": bool }` where `Item = { "Label", "Status", "JobQuote"?, "Verified": bool, "ProfileRef"?: { "Kind": "Skill"|"TargetRole"|"Experience"|"Education"|"Preference", "Id"?, "Label" } }`. `Dimensions` always lists all eight in the fixed order skills, title, experience, location, salary, education, job type, work authorization. `JobQuote` is required for items taken from extraction; items built from job columns in the fallback have `JobQuote` null and `Verified` true. A dimension with status Blocker has `Earned` 0 and its full weight counted as known. Only the final score is rounded.
 
 **Scoring rules** (pure Domain, `Domain/Modules/Jobs/Matching`):
 - **Skill name normalization** (`SkillName.Normalize`, table tested): trim, lower case (invariant), turn hyphens, underscores and runs of whitespace into one space, keep `#`, `+` and `.` (so `C#`, `C++`, `C` and `.NET` stay distinct), strip a trailing version token only when it follows a space and is digits and dots (`.NET 8` → `.net`, `Java 17` → `java`, while `python3` and `es6` stay as is), then map through `SkillAliases` (keys normalized the same way). The shared `skills.Name` is unique and at most 100 characters; the PUT upserts by normalized name and retries once on a unique violation from a concurrent insert.
-- **Skills** (weight 40): each verified extracted skill is matched to a profile skill by normalized name. Required skills count 2, Preferred count 1. Earned is the weighted ratio (sum of matched skill counts over sum of all skill counts) times the weight. Status is Met when all match, Missed when none match, else Partial. Unverified skills are left out of both sums and out of Missing. Unknown when no verified skill was extracted, or your profile has no skills.
-- **Experience** (20): your years are the union of your experience date ranges (overlaps merged, open ended rows run to today's UTC date), in years to one decimal. Met when at least `MinYears`, else Partial with earned `years / MinYears`. Unknown when the job states no minimum or you have no experience rows.
+- **Skills** (weight 30): each verified extracted skill is matched to a profile skill by normalized name. Required skills count 2, Preferred count 1. Earned is the weighted ratio (sum of matched skill counts over sum of all skill counts) times the weight. Status is Met when all match, Missed when none match, else Partial. Unverified skills are left out of both sums and out of Missing. Unknown when no verified skill was extracted, or your profile has no skills.
+- **Title** (15): read from `jobs.Title` (a job column, so its item has `JobQuote` = the title and `Verified` true, and it is scored in the fallback too). Tokens are the normalized title split on spaces, `/`, `,` and `-`, with seniority words removed (`senior`, `junior`, `lead`, `staff`, `principal`, `sr`, `jr`, `i`, `ii`, `iii`, `iv`). For each target role, the share of its tokens found in the title; earned is the best share times the weight. Met at 1, Missed at 0, else Partial; the profile pointer is the best role (`Kind` `TargetRole`). Unknown (reason `ProfileNotSet`) when you have no target roles.
+- **Experience** (15): your years are the union of your experience date ranges (overlaps merged, open ended rows run to today's UTC date), in years to one decimal. Met when at least `MinYears`, else Partial with earned `years / MinYears`. Unknown when the job states no minimum or you have no experience rows.
 - **Location and remote** (15): a Remote job is Met when you accept `Remote` or `Any`, Partial (half) otherwise. An Onsite or Hybrid job is Met when one of its locations matches a preferred location (same normalized city and country, or same country when your preference lists only a country); with no match it is a Blocker when your preference is `Remote`, else Missed. Unknown when the job states neither remote type nor location, or you set `Any` with no preferred locations. In the fallback (AC-8) the job's `RemoteType` column is used as is, and `jobs.Location` counts only when it parses as `City, Country` with a recognizable country name or ISO code (a small static country table in the Domain); otherwise the location part is Unknown (reason `Unparseable`).
 - **Salary** (10): only the extracted salary is ever scored; `jobs.SalaryRangeMin/Max` are not. Compared only when the extracted currency equals yours and its period is Year; Met when the job's max (or min when no max) is at least your `MinSalary`, else Missed. Unknown otherwise (reason `CurrencyDiffers`, `JobSilent`, `ProfileNotSet`, or `ExtractionFailed`).
 - **Education** (5): Met when your highest `DegreeLevel` is at least the required level, or when the posting says "or equivalent experience" and your years meet its `MinYears`; else Missed. Unknown when the job states no degree, or you have no education rows or every row is `None` (reason `ProfileNotSet`).
@@ -120,6 +126,7 @@ Explanation v1: `{ "v": 1, "Dimensions": [{ "Name", "Status", "Earned": decimal,
 - `ExtractJobRequirementsJob(jobId, force)`, marked `[DisableConcurrentExecution]` keyed by job id: loads the job (a missing or soft deleted job is a quiet no-op, no throw), reads its current description and the primary link's latest snapshot hash in one query, and skips the AI call when the row already has this hash and extractor version with `Extracted` and `force` is false. Otherwise it sets `Pending` (resetting `Attempts` and setting `PendingSince`) when not already Pending, and calls `IJobRequirementExtractor`. On failure it increments `Attempts`, stores `FailureReason`, commits that, then rethrows while `Attempts < 3` (the job uses `[AutomaticRetry(Attempts = 2)]`, so three runs in total, matching the counter); at the third failure it sets `Failed` and does not throw. Either way it then runs `ScoreJobMatches(jobId)` for every profile in the same job.
 - `RescoreProfileJob(profileId)`, `[DisableConcurrentExecution]` keyed by profile id: scores every non deleted job for the profile in batches of 200, each batch in its own transaction.
 - `MatchSweepJob` (recurring, hourly, `AddRecurringJob`): enqueues extraction for jobs with no requirements row, a stale content hash, a lower extractor version, a `Pending` row whose `PendingSince` is over 30 minutes old, or a `Failed` row last attempted over 24 hours ago; enqueues `RescoreProfileJob` for each profile that has a match with a lower `ScoringVersion` or lacks a match for any job with a requirements row. Also enqueued once on Api start (like `ReconcileJobsJob`), which covers a changed `Matching` config because the fingerprint check then rescores what changed. Bumping `ExtractorVersion` therefore re-extracts every job through this sweep (an AI cost, unthrottled, acceptable for one user).
+- `JobMatched` (`jobs.job-matched.v1`, `{ JobId, ProfileId, Score }`, AC-17): `ScoreJobMatches` reads the stored `Score` and `HasBlocker` for the (job, profile) row inside its batch transaction before the upsert (Postgres 17 cannot return the old row from `ON CONFLICT`), and when the upsert wrote a row (it returns the id) and the crossing rule holds, calls `IEventPublisher.Publish` and saves the outbox row in that same transaction. Two concurrent runs can both see the old score and both publish; that is acceptable because the notifications handler counts a job once per day (spec 0020 AC-3). This is the event spec 0018 lists for Jobs (#11).
 - Upsert: `ScoreJobMatches` writes with raw SQL `INSERT ... ON CONFLICT (JobId, ProfileId) DO UPDATE SET Score, Confidence, HasBlocker, Explanation, InputsFingerprint, ScoringVersion, RankedAt ... WHERE job_matches."InputsFingerprint" <> excluded."InputsFingerprint"`, so two concurrent runs end with one correct row, an unchanged fingerprint writes nothing (AC-7), and `Id` never changes. No advisory lock is needed; the unique index serializes writers. It does not use `InTransactionAsync`, because it never changes `jobs`.
 - Merge (spec 0017): `ReassignMatchesAsync` keeps the survivor's match when both jobs had one; the survivor's `JobContentChanged` is published in the merge unit, so any match whose content changed is rescored. The removed job's requirements row goes by cascade when `RemoveJob` hard deletes it, and its in flight extraction job finds no job and exits.
 
@@ -148,6 +155,9 @@ The PUT replaces the whole match profile in one transaction: preferences set, sk
 | Score a match | your years of experience | derived from `experiences.StartDate/EndDate`; "today" is `TimeProvider.GetUtcNow()` date |
 | Score a match | your degree level | `max(educations.DegreeLevel)` |
 | Score a match | your preferences | `profiles` new columns |
+| Score a match | job title, your target roles | `jobs.Title`, `profiles.TargetRoles` |
+| `JobMatched` | previous score and blocker | the stored `job_matches` row for (job, profile), read in the batch transaction before the upsert |
+| `JobMatched` | threshold | `profiles.StrongMatchThreshold` (part of the profile fingerprint, so changing it rescores) |
 | Score a match | weights, `BlockerCap`, confidence thresholds, `SkillAliases` | `Matching` config section |
 | Score a match | `ScoringVersion`, `ExtractorVersion` | Domain / Infrastructure constants |
 | Score a match | profile fingerprint | SHA-256 of the canonical JSON of the match profile read model (sorted skills, rows by id) |
@@ -175,7 +185,7 @@ The PUT replaces the whole match profile in one transaction: preferences set, sk
 **Observability**: log each extraction with job id, attempt, model, duration and outcome (never the description text); log a warning on `Failed`; log each rescore batch with counts written versus skipped by fingerprint. Hangfire's dashboard shows retries.
 
 **Configuration required** (no new secrets):
-- `Matching:Weights:{Skills,Experience,Location,Salary,Education,JobType,WorkAuthorization}`: defaults 40, 20, 15, 10, 5, 5, 5.
+- `Matching:Weights:{Skills,Title,Experience,Location,Salary,Education,JobType,WorkAuthorization}`: defaults 30, 15, 15, 15, 10, 5, 5, 5.
 - `Matching:BlockerCap`: default 20.
 - `Matching:Confidence:High` / `Matching:Confidence:Medium`: defaults 0.8 / 0.5.
 - `Matching:MaxDescriptionChars`: default 20000.
@@ -194,6 +204,8 @@ The PUT replaces the whole match profile in one transaction: preferences set, sk
 - Profile page: stale ETag gets 412 and edits stay; bad currency gets a field error, verifies **AC-11**.
 - Auth/permission: detail with a second profile's id returns 404, never the first profile's match, verifies **AC-15**.
 - Startup: weights summing to 99 fail startup, verifies **AC-16**.
+- Title: target role "Backend Engineer" against "Senior Backend Engineer" is Met, against "Data Analyst" is Missed, with no roles set it is Unknown, verifies **AC-2**.
+- Threshold crossing: a job going from 60 to 75 with threshold 70 publishes `JobMatched` once; rescoring it at 80 publishes nothing; a blocked job at any score publishes nothing, verifies **AC-17**.
 - List ordering and paging: blocked after unblocked, unscored last, banner when no skills, verifies **AC-9**.
 
 ## Build plan
@@ -208,15 +220,15 @@ Tracer Bullet: the first slice runs one thin thread through every layer (one dim
 5. `GET /internal/jobs/{jobId}/match` and a `/jobs/{id}` page with the match panel, satisfies **AC-10**, **AC-15**
 
 **Slice 2: every dimension and real profile inputs**
-6. Scorer: experience, location and remote, salary, education, job type, work authorization, blockers and `BlockerCap`, missing and unknown lists, satisfies **AC-3**, **AC-4**, **AC-5**
-7. Profile: `PreconditionFailed`/`PreconditionRequired` in `Result<T>` and `ToHttp`; `GET`/`PUT /internal/profile/{profileId}/match-profile` with ETag, validation, skill name normalization, `MatchProfileChanged` event, handler and `RescoreProfileJob`, satisfies **AC-7**, **AC-11**
+6. Scorer: title, experience, location and remote, salary, education, job type, work authorization, blockers and `BlockerCap`, missing and unknown lists, satisfies **AC-3**, **AC-4**, **AC-5**
+7. Profile: `PreconditionFailed`/`PreconditionRequired` in `Result<T>` and `ToHttp`; `GET`/`PUT /internal/profile/{profileId}/match-profile` with ETag, validation, skill name normalization, `MatchProfileChanged` event, handler and `RescoreProfileJob`; `JobMatched` on a threshold crossing, satisfies **AC-7**, **AC-11**, **AC-17**
 8. `/profile` page (preferences, skills, experience, education, 412 handling) and nav item, satisfies **AC-11**
 
 **Slice 3: list, recovery and upkeep**
 9. `GET /internal/matches` and the `/jobs` list with paging, ordering, badges and the incomplete profile banner, satisfies **AC-9**
 10. Rescore endpoint and button; extraction failure path (attempt counter, `Failed`, rules only fallback with the location parser, notice), satisfies **AC-8**, **AC-10**
 11. Merge and split handling (survivor and split events, requirements cascade) and `MatchSweepJob` plus the Api start enqueue, satisfies **AC-1**, **AC-7**, **AC-14**
-12. Tests per the critical scenarios: scorer and fingerprint unit tests in the Domain tests; integration tests with `WebApplicationFactory` on the live Postgres for events, jobs, endpoints and ETag, satisfies **AC-1** to **AC-16**
+12. Tests per the critical scenarios: scorer and fingerprint unit tests in the Domain tests; integration tests with `WebApplicationFactory` on the live Postgres for events, jobs, endpoints and ETag, satisfies **AC-1** to **AC-17**
 
 ## Consequences
 
@@ -236,7 +248,7 @@ Tracer Bullet: the first slice runs one thin thread through every layer (one dim
 - Using the profile's `xmin` as the ETag means an unrelated profile write can cause a harmless extra 412.
 
 **Neutral**:
-- Two new events and three new Hangfire jobs join the outbox and recurring job registries.
+- Three new events (`JobContentChanged`, `MatchProfileChanged`, `JobMatched`) and three new Hangfire jobs join the outbox and recurring job registries.
 - Feature 12 builds filters and the two column layout on top of these endpoints; feature 13 can read the same list endpoint.
 
 ## Follow-up
@@ -245,3 +257,7 @@ Tracer Bullet: the first slice runs one thin thread through every layer (one dim
 - [ ] Revisit semantic skill matching (embeddings) if alias misses become common in real use.
 - [ ] Revisit currency conversion once real cross currency postings show up often.
 - [ ] Onboarding (33) and Settings (30) should link to or reuse the `/profile` page rather than a second editor.
+- [ ] Decisions made without the engineer when merging the 2026-09-29 draft (please review):
+  - New default weights to make room for Title: skills 30, title 15, experience 15, location 15, salary 10, education 5, job type 5, work authorization 5 (was 40, 0, 20, 15, 10, 5, 5, 5). Runner up: keep title out of the score and show it only as a label.
+  - A blocked job never raises `JobMatched`, even when the threshold is set at or below `BlockerCap`.
+  - The threshold lives on `profiles` and is edited on `/profile`, not on a separate settings page.
