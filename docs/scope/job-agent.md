@@ -34,7 +34,7 @@ Same job from multiple sources collapses to one canonical Job with multiple sour
 - [x] Review it (fresh model): `/check review` → [review](../reviews/2026-09-26-feat-job-deduplication.md)
 - [x] Document it: `/document pr`
 
-### 11. Job matching engine & scoring · in-progress
+### 11. Job matching engine & scoring · done
 Scores a canonical Job against the user's Profile (skills, experience, education, location, remote preference, salary, technology, job type, work authorization). Output must be explainable: score, confidence, evidence, missing requirements, unknown information.
 **Done when:** a job's match score is displayed with a "why it matches" list backed by real evidence pointers, not a black box number.
 - [x] Design it (spec): `/architect job matching engine & scoring` → [0019](../specs/0019-job-matching-engine/index.md)
