@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using WorkPilot.Application.Modules.Profile.MatchProfile;
+using WorkPilot.Contracts.Jobs;
 using WorkPilot.Web.Features.Jobs;
 using WorkPilot.Web.Features.Profile;
 
@@ -77,17 +78,76 @@ public class MatchingClientTests
         Assert.Equal("Currency must be a 3 letter ISO 4217 code.", result.Error);
     }
 
-    // covers: AC-9
+    // covers: AC-9; spec 0021 AC-2
     [Fact]
-    public async Task The_list_asks_for_the_profile_and_page()
+    public async Task The_list_asks_for_the_profile_page_and_only_the_set_filters()
     {
         var handler = new StubHandler(HttpStatusCode.OK, """{"items":[],"total":0,"page":2,"pageSize":25,"profileIncomplete":false}""");
         var client = new JobsApiClient(new StubFactory(handler));
 
-        var result = await client.ListMatchesAsync(ProfileId, 2);
+        var result = await client.SearchAsync(ProfileId, new JobListQuery { Page = 2, Q = "c# dev", MinScore = 70, SalaryMin = 1234.5m, HideBlocked = true, Sort = JobSorts.Newest });
 
         Assert.True(result.Succeeded);
-        Assert.Equal($"/internal/matches?profileId={ProfileId}&page=2", handler.PathAndQuery);
+        Assert.Equal(
+            $"/internal/matches?profileId={ProfileId}&page=2&pageSize=25&q=c%23%20dev&minScore=70&salaryMin=1234.5&hideBlocked=true&sort=newest",
+            handler.PathAndQuery);
+    }
+
+    // covers: spec 0021 AC-4
+    [Fact]
+    public async Task Dismiss_puts_the_profile_id_and_reads_204_as_success()
+    {
+        var handler = new StubHandler(HttpStatusCode.NoContent, string.Empty);
+        var client = new JobsApiClient(new StubFactory(handler));
+
+        var result = await client.DismissAsync(JobId, ProfileId);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(HttpMethod.Put, handler.Method);
+        Assert.Equal($"/internal/jobs/{JobId}/dismissal", handler.Path);
+        using var body = JsonDocument.Parse(handler.Body!);
+        Assert.Equal(ProfileId, body.RootElement.GetProperty("profileId").GetGuid());
+    }
+
+    // covers: spec 0021 AC-4
+    [Fact]
+    public async Task Undo_deletes_the_dismissal_for_the_profile()
+    {
+        var handler = new StubHandler(HttpStatusCode.NoContent, string.Empty);
+        var client = new JobsApiClient(new StubFactory(handler));
+
+        var result = await client.UndoDismissAsync(JobId, ProfileId);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(HttpMethod.Delete, handler.Method);
+        Assert.Equal($"/internal/jobs/{JobId}/dismissal?profileId={ProfileId}", handler.PathAndQuery);
+    }
+
+    // covers: spec 0021 AC-6
+    [Fact]
+    public async Task A_rejected_board_comes_back_per_field()
+    {
+        var handler = new StubHandler(HttpStatusCode.BadRequest, """{"status":400,"errors":{"boardToken":["That is not a valid Lever board."]}}""");
+        var client = new JobsApiClient(new StubFactory(handler));
+
+        var result = await client.AddSourceAsync(new TriggerJobIngestionRequest("lever", "Not A Board!"));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(["That is not a valid Lever board."], result.FieldErrors!["boardToken"]);
+        Assert.Equal(HttpStatusCode.BadRequest, result.Status);
+    }
+
+    // covers: spec 0021 AC-5
+    [Fact]
+    public async Task An_unknown_job_reads_as_not_found()
+    {
+        var handler = new StubHandler(HttpStatusCode.NotFound, """{"status":404,"detail":"That job does not exist."}""");
+        var client = new JobsApiClient(new StubFactory(handler));
+
+        var result = await client.GetJobAsync(JobId, ProfileId);
+
+        Assert.True(result.IsNotFound);
+        Assert.Equal($"/internal/jobs/{JobId}?profileId={ProfileId}", handler.PathAndQuery);
     }
 
     // covers: AC-10
