@@ -91,7 +91,7 @@ The highest risk feature in the product. Browser worker (Playwright class toolin
 **Done when:** for at least one real, permitted target, an approved application is submitted, evidence of success or a clear "uncertain, needs review" state is captured, and no scenario silently reports success without evidence.
 - [ ] Design it (spec): `/architect application execution engine`
 
-### 19. Activity feed & audit log · in-progress
+### 19. Activity feed & audit log · done
 `/activity` timeline of everything the Agent and user did, filterable by domain (Agent, Jobs, Email, Calendar, System, Errors).
 **Done when:** every meaningful action anywhere in the product (who, what, when, why, target, result, evidence) shows up here.
 - [x] Design it (spec): `/architect activity feed & audit log` → [0011](../specs/0011-activity-feed-audit-log/index.md)
@@ -100,8 +100,8 @@ The highest risk feature in the product. Browser worker (Playwright class toolin
   - [x] Category chips bound to the URL, 400 for bad input (AC-2)
   - [x] Summaries, who, browser time zone, evidence expander, target links (AC-4, AC-5, AC-6)
   - [x] Loading, empty and error states (AC-7)
-- [ ] Verify it: `/check verify activity feed & audit log`
-- [ ] Test it: `/test activity feed & audit log`
+- [x] Verify it: `/check verify activity feed & audit log` → [verify.md](../specs/0011-activity-feed-audit-log/verify.md)
+- [x] Test it: `/test activity feed & audit log` (`AuditCategoriesTests`, `ActivitySummariesTests`, `ActivityTests`, `ActivityFeedTests`, `AdvanceRunJobTests`)
 
 ### 20. Notifications
 Approval required, application submitted/failed, reply received, interview upcoming, deadline approaching, workflow failed, integration expired; priority levels (Info/Success/Warning/Action Required/Error).

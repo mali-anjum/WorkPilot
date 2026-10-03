@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using WorkPilot.Application.Modules.Agent;
 using WorkPilot.Domain.Modules.Agent;
 using WorkPilot.Domain.Modules.Approvals;
+using WorkPilot.Domain.Modules.Audit;
 using WorkPilot.Domain.Modules.Profile;
 using WorkPilot.Infrastructure.Modules.Agent;
 using WorkPilot.Infrastructure.Modules.Audit;
@@ -191,6 +192,8 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
             Assert.NotNull(audit.Payload);
             using var payload = JsonDocument.Parse(audit.Payload);
             Assert.Equal("scripted failure", payload.RootElement.GetProperty("error").GetString());
+            // spec 0011, AC-3: a failed tool call is filed under Errors, though its action is the tool's name.
+            Assert.Equal(ActivityCategory.Errors, audit.Category);
 
             var toolCall = await verifyDb.ToolCalls.SingleAsync(t => t.AgentStepId == step.Id);
             Assert.False(toolCall.Success);
@@ -243,6 +246,8 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
             Assert.Equal("Test Founder", payload.RootElement.GetProperty("name").GetString());
             Assert.Equal(2, payload.RootElement.GetProperty("count").GetInt32());
             Assert.False(payload.RootElement.TryGetProperty("error", out _));
+            // spec 0011, AC-3: a tool call that worked stays under Agent.
+            Assert.Equal(ActivityCategory.Agent, audit.Category);
         }
         finally
         {
