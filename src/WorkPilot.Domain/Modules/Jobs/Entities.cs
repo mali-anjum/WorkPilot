@@ -410,12 +410,27 @@ public class JobSnapshot : Entity
     };
 }
 
-/// <summary>How well a job fits a profile, computed once per profile per job.</summary>
+/// <summary>
+/// How well a job fits a profile (spec 0019): one row per (job, profile), written only by the Jobs
+/// module's scoring upsert, which leaves the row alone when <see cref="InputsFingerprint"/> is unchanged.
+/// </summary>
 public class JobMatch : Entity
 {
     public required Guid JobId { get; init; }
     public required Guid ProfileId { get; init; }
-    public required decimal Score { get; set; }
-    public string? MatchedSkills { get; set; }
-    public DateTimeOffset RankedAt { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>0 to 100, or null when nothing was known (AC-3); at most the blocker cap when <see cref="HasBlocker"/>.</summary>
+    public int? Score { get; init; }
+
+    public required string Confidence { get; init; }
+    public bool HasBlocker { get; init; }
+
+    /// <summary>The explanation v1 document as JSON.</summary>
+    public required string Explanation { get; init; }
+
+    /// <summary>SHA-256 hex of every scoring input (AC-7).</summary>
+    public required string InputsFingerprint { get; init; }
+
+    public int ScoringVersion { get; init; }
+    public DateTimeOffset RankedAt { get; init; }
 }

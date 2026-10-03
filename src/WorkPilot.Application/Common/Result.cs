@@ -8,6 +8,12 @@ public enum ResultStatus
     Invalid,
     Conflict,
     Forbidden,
+
+    /// <summary>The caller's <c>If-Match</c> version is stale (HTTP 412).</summary>
+    PreconditionFailed,
+
+    /// <summary>The write needs an <c>If-Match</c> version and none was sent (HTTP 428).</summary>
+    PreconditionRequired,
 }
 
 /// <summary>
@@ -29,7 +35,13 @@ public sealed record Result<T>(ResultStatus Status, T? Value, IReadOnlyDictionar
     public static Result<T> Invalid(string field, string message) =>
         new(ResultStatus.Invalid, default, new Dictionary<string, string[]> { [field] = [message] });
 
+    public static Result<T> Invalid(IReadOnlyDictionary<string, string[]> errors) => new(ResultStatus.Invalid, default, errors);
+
     public static Result<T> Conflict(string detail) => new(ResultStatus.Conflict, default, null, detail);
 
     public static Result<T> Forbidden(string? detail = null) => new(ResultStatus.Forbidden, default, null, detail);
+
+    public static Result<T> PreconditionFailed(string detail) => new(ResultStatus.PreconditionFailed, default, null, detail);
+
+    public static Result<T> PreconditionRequired(string detail) => new(ResultStatus.PreconditionRequired, default, null, detail);
 }

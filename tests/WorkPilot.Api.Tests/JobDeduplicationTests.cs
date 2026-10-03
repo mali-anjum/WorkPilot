@@ -8,6 +8,7 @@ using WorkPilot.Domain.Modules.Jobs;
 using WorkPilot.Infrastructure.Modules.Agent;
 using WorkPilot.Infrastructure.Modules.Applications;
 using WorkPilot.Infrastructure.Modules.Audit;
+using WorkPilot.Infrastructure.Modules.Audit.Outbox;
 using WorkPilot.Infrastructure.Modules.Jobs;
 using WorkPilot.Infrastructure.Persistence;
 
@@ -26,6 +27,7 @@ public class JobDeduplicationTests(SharedApiFactory factory) : IAsyncLifetime
 
     private readonly string _company = $"Acme {Guid.NewGuid():N}";
     private readonly List<Guid> _sources = [];
+    private readonly List<Guid> _profiles = [];
     private readonly ScriptedSource _board = new("ScriptedBoard", 0.9m);
     private readonly ScriptedSource _ats = new("ScriptedAts", 1.0m);
 
@@ -39,6 +41,7 @@ public class JobDeduplicationTests(SharedApiFactory factory) : IAsyncLifetime
         await db.JobMatches.Where(m => jobIds.Contains(m.JobId)).ExecuteDeleteAsync();
         await db.Jobs.IgnoreQueryFilters().Where(j => jobIds.Contains(j.Id)).ExecuteDeleteAsync();
         await db.JobSources.Where(s => _sources.Contains(s.Id)).ExecuteDeleteAsync();
+        await db.Profiles.IgnoreQueryFilters().Where(p => _profiles.Contains(p.Id)).ExecuteDeleteAsync();
     }
 
     [Fact]
@@ -117,7 +120,7 @@ public class JobDeduplicationTests(SharedApiFactory factory) : IAsyncLifetime
             var job = Assert.Single(await JobsAsync(db));
             jobId = job.Id;
             atsLinkId = job.Links.Single(l => l.JobSourceId == ats).Id;
-            db.JobMatches.Add(new JobMatch { JobId = job.Id, ProfileId = Guid.NewGuid(), Score = 0.5m });
+            db.JobMatches.Add(Match(job.Id, await SeedProfileAsync(), 50));
             await db.SaveChangesAsync();
         }
 
@@ -166,7 +169,8 @@ public class JobDeduplicationTests(SharedApiFactory factory) : IAsyncLifetime
         var board = await SeedSourceAsync(_board);
         await IngestAsync(_board, board, T0, Posting("1", "Platform Engineer", "Paris"), Posting("2", "Infra Engineer", "Paris"));
 
-        var profile = Guid.NewGuid();
+        var profile = await SeedProfileAsync();
+        var otherProfile = await SeedProfileAsync();
         Guid older, newer;
         await using (var db = CreateDbContext())
         {
@@ -174,9 +178,9 @@ public class JobDeduplicationTests(SharedApiFactory factory) : IAsyncLifetime
             older = jobs.Single(j => j.Links[0].ExternalId == "1").Id;
             newer = jobs.Single(j => j.Links[0].ExternalId == "2").Id;
             Assert.True(older.CompareTo(newer) < 0);
-            db.JobMatches.Add(new JobMatch { JobId = newer, ProfileId = profile, Score = 0.7m });
-            db.JobMatches.Add(new JobMatch { JobId = newer, ProfileId = Guid.NewGuid(), Score = 0.4m });
-            db.JobMatches.Add(new JobMatch { JobId = older, ProfileId = profile, Score = 0.6m });
+            db.JobMatches.Add(Match(newer, profile, 70));
+            db.JobMatches.Add(Match(newer, otherProfile, 40));
+            db.JobMatches.Add(Match(older, profile, 60));
             await db.SaveChangesAsync();
         }
 
@@ -195,7 +199,7 @@ public class JobDeduplicationTests(SharedApiFactory factory) : IAsyncLifetime
             Assert.Equal(2, job.Links.Count);
             Assert.False(job.IsStale);
             Assert.Equal(2, await db.JobMatches.CountAsync(m => m.JobId == older));
-            Assert.Equal(0.6m, (await db.JobMatches.SingleAsync(m => m.JobId == older && m.ProfileId == profile)).Score);
+            Assert.Equal(60, (await db.JobMatches.SingleAsync(m => m.JobId == older && m.ProfileId == profile)).Score);
             var audits = await db.AuditLogs.Where(a => a.TargetId == older && a.Action == JobMerger.MergedAction).ToListAsync();
             Assert.Contains(audits, a => a.Payload!.Contains("\"reconcile\"", StringComparison.Ordinal));
         }
@@ -388,7 +392,7 @@ public class JobDeduplicationTests(SharedApiFactory factory) : IAsyncLifetime
         var audit = new AuditService(db);
         IJobSource[] adapters = [_board, _ats];
         var merger = new JobMerger(repository, new JobApplicationReassigner(db), audit, adapters);
-        var service = new JobIngestionService(adapters, repository, merger, audit, new FixedTime(now));
+        var service = new JobIngestionService(adapters, repository, merger, audit, new EventPublisher(db, TimeProvider.System), new FixedTime(now));
         source.Next = postings.Select(source.Stamp).ToArray();
         return await service.IngestAsync(sourceId, null, companyName, CancellationToken.None);
     }
@@ -399,7 +403,7 @@ public class JobDeduplicationTests(SharedApiFactory factory) : IAsyncLifetime
         var repository = new JobRepository(db);
         IJobSource[] adapters = [_board, _ats];
         var merger = new JobMerger(repository, new JobApplicationReassigner(db), new AuditService(db), adapters);
-        return await new JobDedupService(adapters, repository, merger, new FixedTime(T0.AddDays(2))).SplitAsync(jobId, linkId, CancellationToken.None);
+        return await new JobDedupService(adapters, repository, merger, new EventPublisher(db, TimeProvider.System), new FixedTime(T0.AddDays(2))).SplitAsync(jobId, linkId, CancellationToken.None);
     }
 
     private async Task<int> ReconcileAsync()
@@ -408,7 +412,7 @@ public class JobDeduplicationTests(SharedApiFactory factory) : IAsyncLifetime
         var repository = new JobRepository(db);
         IJobSource[] adapters = [_board, _ats];
         var merger = new JobMerger(repository, new JobApplicationReassigner(db), new AuditService(db), adapters);
-        return await new JobDedupService(adapters, repository, merger, new FixedTime(T0.AddDays(2))).ReconcileAsync(CancellationToken.None);
+        return await new JobDedupService(adapters, repository, merger, new EventPublisher(db, TimeProvider.System), new FixedTime(T0.AddDays(2))).ReconcileAsync(CancellationToken.None);
     }
 
     private async Task<List<Job>> JobsAsync(WorkPilotDbContext db) =>
@@ -421,6 +425,27 @@ public class JobDeduplicationTests(SharedApiFactory factory) : IAsyncLifetime
 
     private WorkPilotDbContext CreateDbContext() =>
         factory.Services.CreateScope().ServiceProvider.GetRequiredService<WorkPilotDbContext>();
+
+    // job_matches.ProfileId is a foreign key (spec 0019), so a seeded match needs a real profile.
+    private async Task<Guid> SeedProfileAsync()
+    {
+        await using var db = CreateDbContext();
+        var profile = new Domain.Modules.Profile.Profile { AuthUserId = Guid.NewGuid(), Name = "Dedup test" };
+        db.Profiles.Add(profile);
+        await db.SaveChangesAsync();
+        _profiles.Add(profile.Id);
+        return profile.Id;
+    }
+
+    private static JobMatch Match(Guid jobId, Guid profileId, int score) => new()
+    {
+        JobId = jobId,
+        ProfileId = profileId,
+        Score = score,
+        Confidence = "High",
+        Explanation = "{}",
+        InputsFingerprint = "seeded",
+    };
 
     private async Task<Guid> SeedSourceAsync(ScriptedSource adapter)
     {

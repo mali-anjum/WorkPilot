@@ -34,10 +34,19 @@ Same job from multiple sources collapses to one canonical Job with multiple sour
 - [x] Review it (fresh model): `/check review` → [review](../reviews/2026-09-26-feat-job-deduplication.md)
 - [x] Document it: `/document pr`
 
-### 11. Job matching engine & scoring · needs a decision
+### 11. Job matching engine & scoring · done
 Scores a canonical Job against the user's Profile (skills, experience, education, location, remote preference, salary, technology, job type, work authorization). Output must be explainable: score, confidence, evidence, missing requirements, unknown information.
 **Done when:** a job's match score is displayed with a "why it matches" list backed by real evidence pointers, not a black box number.
-- [ ] Design it (spec): `/architect job matching engine & scoring` (Wave 1, spec 0018 section 9)
+- [x] Design it (spec): `/architect job matching engine & scoring` → [0019](../specs/0019-job-matching-engine/index.md)
+- [x] Build it: `/develop job matching engine & scoring` (code in `src/*/Modules/Jobs/Matching/`, `src/WorkPilot.AI/Matching/`, `Infrastructure/Modules/Profile/MatchProfileService.cs`, `Web/Components/Pages/{Jobs,JobDetail,Profile}.razor`, migration `AddJobMatching`)
+  - [x] `AddJobMatching` migration, Domain scorer (all eight dimensions, blockers, confidence, quote checks, fingerprint) and `Matching` config validation (AC-2 to AC-6, AC-16)
+  - [x] Extraction on the `JobExtraction` purpose with the Fake answer, `JobContentChanged` from ingestion, merge and split, extraction and scoring jobs with the raw SQL upsert and `JobMatched` (AC-1, AC-7, AC-8, AC-12 to AC-14, AC-17)
+  - [x] Match profile `GET`/`PUT` with ETag, 412/428 in `Result<T>`, `MatchProfileChanged` and `RescoreProfileJob`, the hourly sweep plus the Api start enqueue (AC-7, AC-11)
+  - [x] Match list, match panel and rescore endpoints, and the `/jobs`, `/jobs/{id}` and `/profile` pages with the Profile nav item (AC-9, AC-10, AC-11, AC-15)
+- [x] Verify it: `/check verify job matching engine & scoring` → [verify](../specs/0019-job-matching-engine/verify.md)
+- [x] Test it: `/test job matching engine & scoring`
+- [x] Review it (fresh model): `/check review` → [review](../reviews/2026-10-03-feat-job-matching-engine.md)
+- [x] Document it: `/document pr`
 
 ### 12. Jobs list & job detail
 `/jobs` list with filters (location, remote, salary, experience, technology, company, job type, source, match score, date posted, visa sponsorship) and the two column job detail (job info + agent analysis) per the product spec.

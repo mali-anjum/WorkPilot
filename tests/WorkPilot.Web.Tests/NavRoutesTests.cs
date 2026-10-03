@@ -14,9 +14,9 @@ public class NavRoutesTests
     }
 
     [Fact]
-    public void Has_twelve_sub_items_total()
+    public void Has_thirteen_sub_items_total()
     {
-        Assert.Equal(12, NavRoutes.Sections.Sum(s => s.Items.Count));
+        Assert.Equal(13, NavRoutes.Sections.Sum(s => s.Items.Count));
     }
 
     [Fact]
@@ -28,6 +28,7 @@ public class NavRoutesTests
             ["Jobs"] = "/jobs",
             ["Applications"] = "/applications",
             ["Resumes"] = "/resumes",
+            ["Profile"] = "/profile",
             ["Universities"] = "/universities",
             ["Outreach"] = "/outreach",
             ["Calendar"] = "/calendar",

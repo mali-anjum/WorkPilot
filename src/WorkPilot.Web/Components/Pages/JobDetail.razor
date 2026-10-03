@@ -1,0 +1,264 @@
+@page "/jobs/{JobId:guid}"
+@using WorkPilot.Application.Modules.Jobs.Matching
+@using WorkPilot.Web.Features.Jobs
+@using WorkPilot.Web.Features.Profile
+@using WorkPilot.Web.Components.Matching
+@inject IJobsApiClient JobsApi
+
+<HeadContent><link rel="stylesheet" href="css/matching.css" /></HeadContent>
+<PageTitle>@(_match?.Title ?? "Job")</PageTitle>
+
+<p><a href="/jobs">← All jobs</a></p>
+
+@if (_error is not null)
+{
+    <PageHeader Title="Job match" />
+    <p class="wp-match__error" role="alert">@_error</p>
+    @if (_profileId != Guid.Empty)
+    {
+        <Button Variant="ButtonVariant.Secondary" Disabled="_busy" OnClick="RescoreAsync">Rescore this job</Button>
+    }
+
+    @if (_notice is not null)
+    {
+        <p class="wp-match__message" role="status">@_notice</p>
+    }
+
+    @if (_actionError is not null)
+    {
+        <p class="wp-match__error" role="alert">@_actionError</p>
+    }
+}
+else if (_match is null)
+{
+    <p class="wp-match__muted">Loading…</p>
+}
+else
+{
+    <PageHeader Title="@_match.Title" Description="@($"{_match.Company}{(_match.Location is null ? "" : $" · {_match.Location}")}")" />
+
+    <section class="wp-match__summary" aria-label="Match score">
+        <span class="wp-match__big-score">@(_match.Score?.ToString() ?? "–")</span>
+        <span class="wp-match__summary-tags">
+            <Badge Status="StatusKind.Neutral">@_match.Confidence confidence</Badge>
+            @if (_match.HasBlocker)
+            {
+                <Badge Status="StatusKind.Danger">Blocker</Badge>
+            }
+            @if (IsWebUrl(_match.JobUrl))
+            {
+                <a href="@_match.JobUrl" target="_blank" rel="noopener noreferrer">View the posting</a>
+            }
+            <span class="wp-match__muted">Scored @_match.RankedAt.ToString("yyyy-MM-dd HH:mm") UTC</span>
+        </span>
+        <Button Variant="ButtonVariant.Secondary" Disabled="_busy" OnClick="RescoreAsync">Rescore</Button>
+    </section>
+
+    @if (_notice is not null)
+    {
+        <p class="wp-match__message" role="status">@_notice</p>
+    }
+
+    @if (_actionError is not null)
+    {
+        <p class="wp-match__error" role="alert">@_actionError</p>
+    }
+
+    @if (_match.Score is null)
+    {
+        <p class="wp-match__banner" role="status">Not enough information to score this job.</p>
+    }
+
+    @if (_match.Explanation.ExtractionFailed)
+    {
+        <p class="wp-match__banner" role="status">
+            The job's requirements could not be read, so only its location and title were scored.
+            @if (_match.FailureReason is not null)
+            {
+                <span class="wp-match__muted"> (@_match.FailureReason)</span>
+            }
+            Rescore to try again.
+        </p>
+    }
+
+    @if (_match.Explanation.Blockers.Count > 0)
+    {
+        <Card Title="Blockers">
+            <ul class="wp-match__items">
+                @foreach (var item in _match.Explanation.Blockers)
+                {
+                    <MatchEvidence Item="item" />
+                }
+            </ul>
+        </Card>
+    }
+
+    <Card Title="Why it matches">
+        @{ var reasons = _match.Explanation.Dimensions.SelectMany(d => d.Items).Where(i => i.Status is "Met" or "Partial").ToList(); }
+        @if (reasons.Count == 0)
+        {
+            <p class="wp-match__muted">Nothing in this posting matches your profile yet.</p>
+        }
+        else
+        {
+            <ul class="wp-match__items">
+                @foreach (var item in reasons)
+                {
+                    <MatchEvidence Item="item" />
+                }
+            </ul>
+        }
+    </Card>
+
+    <Card Title="Missing requirements">
+        @if (_match.Explanation.Missing.Count == 0)
+        {
+            <p class="wp-match__muted">Nothing required is missing.</p>
+        }
+        else
+        {
+            <ul class="wp-match__items">
+                @foreach (var item in _match.Explanation.Missing)
+                {
+                    <MatchEvidence Item="item" />
+                }
+            </ul>
+        }
+    </Card>
+
+    <Card Title="Unknown information">
+        @if (_match.Explanation.Unknown.Count == 0)
+        {
+            <p class="wp-match__muted">Every dimension was scored.</p>
+        }
+        else
+        {
+            <ul class="wp-match__items">
+                @foreach (var unknown in _match.Explanation.Unknown)
+                {
+                    <li class="wp-match__item"><strong>@Label(unknown.Dimension)</strong> <span class="wp-match__muted">@Reason(unknown.Reason)</span></li>
+                }
+            </ul>
+        }
+    </Card>
+
+    <Card Title="Score breakdown">
+        <table class="wp-match__table">
+            <thead><tr><th scope="col">Dimension</th><th scope="col">Result</th><th scope="col">Points</th></tr></thead>
+            <tbody>
+                @foreach (var dimension in _match.Explanation.Dimensions)
+                {
+                    <tr>
+                        <th scope="row">@Label(dimension.Name)</th>
+                        <td><Badge Status="@StatusOf(dimension.Status)">@dimension.Status</Badge></td>
+                        <td>@(dimension.Status == "Unknown" ? "not counted" : $"{dimension.Earned:0.##} / {dimension.Weight}")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </Card>
+
+    @if (_match.Explanation.Unverified.Count > 0)
+    {
+        <Card Title="Unverified (not counted)">
+            <p class="wp-match__muted">The reader quoted text that is not in the posting, so these scored nothing.</p>
+            <ul class="wp-match__items">
+                @foreach (var item in _match.Explanation.Unverified)
+                {
+                    <li class="wp-match__item"><strong>@item.Label</strong> <span class="wp-match__muted">(@Label(item.Dimension))</span>
+                        @if (!string.IsNullOrWhiteSpace(item.JobQuote))
+                        {
+                            <blockquote class="wp-match__quote">@item.JobQuote</blockquote>
+                        }
+                    </li>
+                }
+            </ul>
+        </Card>
+    }
+}
+
+@code {
+    [Parameter]
+    public Guid JobId { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private JobMatchDetailDto? _match;
+    private Guid _profileId;
+    private string? _error;
+    private string? _notice;
+    private string? _actionError;
+    private bool _busy;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _match = null;
+        _error = null;
+        _notice = null;
+        _actionError = null;
+        if (AuthState is null || ProfileWebExtensions.ProfileId((await AuthState).User) is not { } profileId)
+        {
+            _error = "Your session has no profile; sign in again.";
+            return;
+        }
+
+        _profileId = profileId;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var result = await JobsApi.GetMatchAsync(JobId, _profileId);
+        _match = result.Value;
+        _error = result.Error;
+    }
+
+    private async Task RescoreAsync()
+    {
+        _busy = true;
+        try
+        {
+            var result = await JobsApi.RescoreAsync(JobId, _profileId);
+            // A failed rescore is shown beside the panel, never in place of it.
+            _notice = result.Succeeded
+                ? result.Value!.Queued ? "Rescore queued. Reload in a moment to see the new score." : "A rescore is already running for this job."
+                : null;
+            _actionError = result.Succeeded ? null : result.Error;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // The posting URL comes from an external feed: only http and https become links.
+    private static bool IsWebUrl(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
+
+    private static string Label(string dimension) => dimension switch
+    {
+        "JobType" => "Job type",
+        "WorkAuthorization" => "Work authorization",
+        "Location" => "Location and remote",
+        _ => dimension,
+    };
+
+    private static string Reason(string reason) => reason switch
+    {
+        "JobSilent" => "the job did not say",
+        "ProfileNotSet" => "your profile does not say",
+        "CurrencyDiffers" => "the salary is in another currency or period",
+        "ExtractionFailed" => "the requirements could not be read",
+        "Unparseable" => "the location could not be read",
+        _ => reason,
+    };
+
+    private static StatusKind StatusOf(string status) => status switch
+    {
+        "Met" => StatusKind.Success,
+        "Partial" => StatusKind.Warning,
+        "Missed" or "Blocker" => StatusKind.Danger,
+        _ => StatusKind.Neutral,
+    };
+}

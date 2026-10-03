@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using WorkPilot.Domain.Modules.Jobs;
+using WorkPilot.Domain.Modules.Jobs.Matching;
+using WorkPilot.Domain.Modules.Profile;
 
 namespace WorkPilot.Infrastructure.Persistence.Configurations;
 
@@ -99,9 +101,38 @@ public class JobMatchConfiguration : IEntityTypeConfiguration<JobMatch>
 {
     public void Configure(EntityTypeBuilder<JobMatch> builder)
     {
-        builder.ToTable("job_matches");
+        builder.ToTable("job_matches", t =>
+            t.HasCheckConstraint("ck_job_matches_score", "\"Score\" IS NULL OR \"Score\" BETWEEN 0 AND 100"));
         builder.HasKey(e => e.Id);
+
+        // One match per (job, profile); the scoring upsert's ON CONFLICT target (spec 0019).
         builder.HasIndex(e => new { e.JobId, e.ProfileId }).IsUnique();
-        builder.Property(e => e.MatchedSkills).HasColumnType("jsonb");
+
+        // The /jobs list for one profile: unblocked first, best score first (AC-9).
+        builder.HasIndex(e => new { e.ProfileId, e.HasBlocker, e.Score }).IsDescending(false, false, true);
+
+        builder.Property(e => e.Confidence).HasMaxLength(10).IsRequired();
+        builder.Property(e => e.Explanation).HasColumnType("jsonb").IsRequired();
+        builder.Property(e => e.InputsFingerprint).HasMaxLength(64).IsRequired();
+        builder.HasOne<Profile>().WithMany().HasForeignKey(e => e.ProfileId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class JobRequirementConfiguration : IEntityTypeConfiguration<JobRequirement>
+{
+    public void Configure(EntityTypeBuilder<JobRequirement> builder)
+    {
+        builder.ToTable("job_requirements");
+        builder.HasKey(e => e.Id);
+
+        // One row per job; it goes with the job when a merge hard deletes it (spec 0019, AC-14).
+        builder.HasIndex(e => e.JobId).IsUnique();
+        builder.HasOne<Job>().WithMany().HasForeignKey(e => e.JobId).OnDelete(DeleteBehavior.Cascade);
+
+        builder.Property(e => e.ContentHash).HasMaxLength(128).IsRequired();
+        builder.Property(e => e.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+        builder.Property(e => e.Requirements).HasColumnType("jsonb");
+        builder.Property(e => e.Model).HasMaxLength(200);
+        builder.Property(e => e.FailureReason).HasMaxLength(JobRequirement.MaxFailureReasonLength);
     }
 }

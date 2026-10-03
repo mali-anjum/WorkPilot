@@ -14,6 +14,9 @@ public static class AiPurposes
     /// <summary>The agent orchestrator's Planner (spec 0005).</summary>
     public const string Planner = "Planner";
 
+    /// <summary>Reads a job description into structured, quoted requirements (spec 0019).</summary>
+    public const string JobExtraction = "JobExtraction";
+
     /// <summary>Every known purpose; config naming any other purpose fails startup (AC-4).</summary>
-    public static IReadOnlyList<string> All { get; } = [Default, Planner];
+    public static IReadOnlyList<string> All { get; } = [Default, Planner, JobExtraction];
 }

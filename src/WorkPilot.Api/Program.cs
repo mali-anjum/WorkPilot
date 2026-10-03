@@ -144,6 +144,10 @@ using (var scope = app.Services.CreateScope())
     {
         scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>().Enqueue<ReconcileJobsJob>(j => j.RunAsync());
     }
+
+    // Job matching (docs/specs/0019-job-matching-engine): one sweep on start extracts what is
+    // missing or stale and rescores every profile, so a scoring or Matching config change applies.
+    scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>().Enqueue<MatchSweepJob>(j => j.RunAsync(true));
 }
 
 // Configure the HTTP request pipeline.

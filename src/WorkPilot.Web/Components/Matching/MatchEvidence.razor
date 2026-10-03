@@ -1,0 +1,26 @@
+@using WorkPilot.Application.Modules.Jobs.Matching
+
+@* One line of match evidence: what the posting says (quoted) and the profile item behind it (spec 0019, AC-2). *@
+<li class="wp-match__item">
+    <strong>@Item.Label</strong>
+    @if (Item.ProfileRef is { } profileRef)
+    {
+        <span class="wp-match__muted"> · your @KindLabel(profileRef.Kind): @profileRef.Label</span>
+    }
+    @if (!string.IsNullOrWhiteSpace(Item.JobQuote))
+    {
+        <blockquote class="wp-match__quote">@Item.JobQuote</blockquote>
+    }
+</li>
+
+@code {
+    /// <summary>The evidence line to show.</summary>
+    [Parameter, EditorRequired]
+    public ExplanationItemDto Item { get; set; } = null!;
+
+    private static string KindLabel(string kind) => kind switch
+    {
+        "TargetRole" => "target role",
+        _ => kind.ToLowerInvariant(),
+    };
+}

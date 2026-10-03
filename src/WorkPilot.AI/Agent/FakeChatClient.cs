@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.AI;
+using WorkPilot.AI.Matching;
 
 namespace WorkPilot.AI.Agent;
 
@@ -10,7 +11,8 @@ namespace WorkPilot.AI.Agent;
 /// Active when the configured provider's <c>Kind</c> is <c>Fake</c>, the
 /// Development default (docs/specs/0006-ai-provider-abstraction). Picks the first tool the
 /// goal text mentions by name, falling back to the first tool listed, so the
-/// orchestrator's pipeline can be built and tested without a real API key.
+/// orchestrator's pipeline can be built and tested without a real API key. Job
+/// requirements extraction prompts get a deterministic answer too (spec 0019).
 /// </summary>
 public sealed partial class FakeChatClient : IChatClient
 {
@@ -19,8 +21,13 @@ public sealed partial class FakeChatClient : IChatClient
     public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
     {
         var prompt = string.Concat(messages.Select(m => m.Text));
-        var json = BuildFakePlan(prompt);
-        return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, json)));
+
+        // A job requirements extraction prompt (spec 0019, AC-13) gets a deterministic v1
+        // document built from its description; anything else is a planning prompt.
+        var json = ChatClientJobRequirementExtractor.DescriptionOf(prompt) is { } description
+            ? FakeJobRequirements.Build(description)
+            : BuildFakePlan(prompt);
+        return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, json)) { ModelId = "fake" });
     }
 
     public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(

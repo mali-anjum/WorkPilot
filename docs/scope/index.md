@@ -25,7 +25,7 @@ _These are recommendations to keep the build orderly, not requirements. Skip any
 | 8 | Approval engine & Approval center | Foundation | done |
 | 9 | Job source ingestion & normalization | Slice 1: Job Agent core loop | done |
 | 10 | Job deduplication | Slice 1: Job Agent core loop | done |
-| 11 | Job matching engine & scoring | Slice 1: Job Agent core loop | planned |
+| 11 | Job matching engine & scoring | Slice 1: Job Agent core loop | done |
 | 12 | Jobs list & job detail | Slice 1: Job Agent core loop | planned |
 | 13 | Dashboard overview | Slice 1: Job Agent core loop | planned |
 | 14 | Resume management | Slice 1: Job Agent core loop | done |

@@ -7,6 +7,7 @@ using WorkPilot.Web;
 using WorkPilot.Web.Components;
 using WorkPilot.Web.Features.Approvals;
 using WorkPilot.Web.Features.Auth;
+using WorkPilot.Web.Features.Jobs;
 using WorkPilot.Web.Features.Profile;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -89,6 +90,7 @@ builder.Services.AddHttpClient("api", client => client.BaseAddress = new Uri("ht
 
 // === Modules (alphabetical; at most one Add and one Map line each, spec 0018) ===
 builder.Services.AddApprovalsWeb();
+builder.Services.AddJobsWeb();
 builder.Services.AddProfileWeb();
 // === End modules ===
 

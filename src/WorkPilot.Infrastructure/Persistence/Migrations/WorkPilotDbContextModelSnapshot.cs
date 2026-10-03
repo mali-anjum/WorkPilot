@@ -586,11 +586,25 @@ namespace WorkPilot.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Confidence")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Explanation")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<bool>("HasBlocker")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("InputsFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<Guid>("JobId")
                         .HasColumnType("uuid");
-
-                    b.Property<string>("MatchedSkills")
-                        .HasColumnType("jsonb");
 
                     b.Property<Guid>("ProfileId")
                         .HasColumnType("uuid");
@@ -598,15 +612,24 @@ namespace WorkPilot.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("RankedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<decimal>("Score")
-                        .HasColumnType("numeric");
+                    b.Property<int?>("Score")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ScoringVersion")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
                     b.HasIndex("JobId", "ProfileId")
                         .IsUnique();
 
-                    b.ToTable("job_matches", "app");
+                    b.HasIndex("ProfileId", "HasBlocker", "Score")
+                        .IsDescending(false, false, true);
+
+                    b.ToTable("job_matches", "app", t =>
+                        {
+                            t.HasCheckConstraint("ck_job_matches_score", "\"Score\" IS NULL OR \"Score\" BETWEEN 0 AND 100");
+                        });
                 });
 
             modelBuilder.Entity("WorkPilot.Domain.Modules.Jobs.JobSnapshot", b =>
@@ -718,6 +741,56 @@ namespace WorkPilot.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("job_source_links", "app");
+                });
+
+            modelBuilder.Entity("WorkPilot.Domain.Modules.Jobs.Matching.JobRequirement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset?>("ExtractedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ExtractorVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("PendingSince")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Requirements")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId")
+                        .IsUnique();
+
+                    b.ToTable("job_requirements", "app");
                 });
 
             modelBuilder.Entity("WorkPilot.Domain.Modules.Notifications.Notification", b =>
@@ -924,6 +997,11 @@ namespace WorkPilot.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("DegreeLevel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<DateOnly?>("EndDate")
                         .HasColumnType("date");
 
@@ -993,6 +1071,10 @@ namespace WorkPilot.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("AuthUserId")
                         .HasColumnType("uuid");
 
+                    b.PrimitiveCollection<List<string>>("AuthorizedCountries")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1002,24 +1084,59 @@ namespace WorkPilot.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
+                    b.PrimitiveCollection<string[]>("JobTypes")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
                     b.Property<string>("Location")
                         .HasColumnType("text");
+
+                    b.Property<decimal?>("MinSalary")
+                        .HasColumnType("numeric(12,2)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<bool>("NeedsSponsorshipElsewhere")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("RemotePreference")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SalaryCurrency")
+                        .HasColumnType("char(3)");
+
+                    b.Property<int>("StrongMatchThreshold")
+                        .HasColumnType("integer");
+
                     b.PrimitiveCollection<List<string>>("TargetRoles")
                         .IsRequired()
                         .HasColumnType("text[]");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 
                     b.HasIndex("AuthUserId")
                         .IsUnique();
 
-                    b.ToTable("profiles", "app");
+                    b.ToTable("profiles", "app", t =>
+                        {
+                            t.HasCheckConstraint("ck_profiles_salary_currency", "(\"MinSalary\" IS NULL) = (\"SalaryCurrency\" IS NULL)");
+
+                            t.HasCheckConstraint("ck_profiles_strong_match_threshold", "\"StrongMatchThreshold\" BETWEEN 0 AND 100");
+                        });
                 });
 
             modelBuilder.Entity("WorkPilot.Domain.Modules.Profile.ProfileSkill", b =>
@@ -1472,6 +1589,15 @@ namespace WorkPilot.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("WorkPilot.Domain.Modules.Jobs.JobMatch", b =>
+                {
+                    b.HasOne("WorkPilot.Domain.Modules.Profile.Profile", null)
+                        .WithMany()
+                        .HasForeignKey("ProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("WorkPilot.Domain.Modules.Jobs.JobSnapshot", b =>
                 {
                     b.HasOne("WorkPilot.Domain.Modules.Jobs.Job", null)
@@ -1531,6 +1657,15 @@ namespace WorkPilot.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("WorkPilot.Domain.Modules.Jobs.Matching.JobRequirement", b =>
+                {
+                    b.HasOne("WorkPilot.Domain.Modules.Jobs.Job", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("WorkPilot.Domain.Modules.Outreach.EmailThread", b =>
                 {
                     b.HasOne("WorkPilot.Domain.Modules.Outreach.OutreachMessage", null)
@@ -1583,6 +1718,37 @@ namespace WorkPilot.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ProfileId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("WorkPilot.Domain.Modules.Profile.Profile", b =>
+                {
+                    b.OwnsMany("WorkPilot.Domain.Modules.Profile.PreferredLocation", "PreferredLocations", b1 =>
+                        {
+                            b1.Property<Guid>("ProfileId");
+
+                            b1.Property<int>("__synthesizedOrdinal")
+                                .ValueGeneratedOnAdd();
+
+                            b1.Property<string>("City")
+                                .HasMaxLength(100);
+
+                            b1.Property<string>("Country")
+                                .IsRequired()
+                                .HasMaxLength(2);
+
+                            b1.HasKey("ProfileId", "__synthesizedOrdinal");
+
+                            b1.ToTable("profiles", "app");
+
+                            b1
+                                .ToJson("PreferredLocations")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ProfileId");
+                        });
+
+                    b.Navigation("PreferredLocations");
                 });
 
             modelBuilder.Entity("WorkPilot.Domain.Modules.Profile.ProfileSkill", b =>
