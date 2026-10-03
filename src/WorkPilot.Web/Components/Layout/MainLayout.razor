@@ -1,7 +1,9 @@
 @inherits LayoutComponentBase
+@using WorkPilot.Web.Features.Notifications
 
 <AppShell InitialTheme="@InitialTheme">
-    @Body
+    <TopBarActions><NotificationBell /></TopBarActions>
+    <ChildContent>@Body</ChildContent>
 </AppShell>
 
 <div id="blazor-error-ui" data-nosnippet>

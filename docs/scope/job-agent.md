@@ -103,7 +103,16 @@ The highest risk feature in the product. Browser worker (Playwright class toolin
 - [x] Verify it: `/check verify activity feed & audit log` → [verify.md](../specs/0011-activity-feed-audit-log/verify.md)
 - [x] Test it: `/test activity feed & audit log` (`AuditCategoriesTests`, `ActivitySummariesTests`, `ActivityTests`, `ActivityFeedTests`, `AdvanceRunJobTests`)
 
-### 20. Notifications
+### 20. Notifications · in-progress
 Approval required, application submitted/failed, reply received, interview upcoming, deadline approaching, workflow failed, integration expired; priority levels (Info/Success/Warning/Action Required/Error).
 **Done when:** at least the approval-required and application-outcome notifications fire in real time off real events.
-- [ ] Design it (spec): `/architect notifications` (Wave 1, spec 0018 section 9)
+- [x] Design it (spec): `/architect notifications` → [0020](../specs/0020-notifications/index.md)
+- [x] Build it: `/develop notifications` (code in `src/*/Modules/Notifications/`, `Workers/Notifications/`, `Api/Endpoints/NotificationsEndpoints.cs`, `Contracts/Notifications/`, `Web/Features/Notifications/`, `Web/Components/Pages/Notifications/`, migration `AddNotifications`)
+  - [x] `AddNotifications` migration, `Notification` domain, approval handler, unread count, `TopBarActions` slot and polling bell (AC-1, AC-4, AC-6)
+  - [x] List, read, read all and dismiss endpoints; drawer; `/notifications` page with paging and the unread toggle (AC-4, AC-5, AC-8)
+  - [x] Run failed handler with readable reasons; strong match digest with row lock and dedupe (AC-2, AC-3, AC-6)
+  - [x] `notifications.cleanup` recurring job and `Notifications:ReadRetentionDays` (AC-7); loading, empty and error states (AC-9)
+- [x] Verify it: `/check verify notifications` → [verify.md](../specs/0020-notifications/verify.md)
+- [x] Test it: `/test notifications` (`NotificationTests`, `StrongMatchDigestTests`, `AgentRunFailureReasonTextTests`, Api `NotificationsTests`, `NotificationBellTests`, `NotificationsPageTests`, `NotificationDisplayTests`, `NotificationsApiClientTests`)
+- [x] Review it (fresh model): `/check review` → [review](../reviews/2026-10-03-feat-notifications.md)
+- [x] Document it: `/document pr`

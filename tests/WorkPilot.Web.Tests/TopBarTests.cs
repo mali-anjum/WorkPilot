@@ -56,4 +56,15 @@ public class TopBarTests : BunitContext
 
         Assert.Equal("☾ Dark", cut.Find("button").TextContent);
     }
+
+    // Spec 0020: the host puts the notification bell in the top bar through this slot.
+    [Fact]
+    public void Actions_render_in_the_top_bar_before_the_theme_toggle()
+    {
+        var cut = Render<TopBar>(parameters => parameters
+            .Add(p => p.Actions, builder => builder.AddMarkupContent(0, "<span id=\"slot\">bell</span>")));
+
+        var actions = cut.Find(".wp-topbar__actions");
+        Assert.Equal("slot", actions.FirstElementChild!.Id);
+    }
 }

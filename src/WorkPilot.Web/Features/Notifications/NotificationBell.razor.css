@@ -1,0 +1,167 @@
+/* The notification bell and its drawer (spec 0020), in the top bar on every page. */
+.wp-bell {
+    position: relative;
+}
+
+.wp-bell__button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: var(--text-base);
+    cursor: pointer;
+}
+
+.wp-bell__button:hover {
+    border-color: var(--color-text-muted);
+}
+
+.wp-bell__count {
+    position: absolute;
+    top: -6px;
+    right: -8px;
+    min-width: 1.25rem;
+    padding: 0 var(--space-1);
+    border-radius: 999px;
+    background: var(--color-danger);
+    color: #ffffff;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    line-height: 1.25rem;
+    text-align: center;
+}
+
+.wp-bell__scrim {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    border: 0;
+    background: transparent;
+    cursor: default;
+}
+
+.wp-bell__drawer {
+    position: absolute;
+    top: calc(100% + var(--space-2));
+    right: 0;
+    z-index: calc(var(--z-modal) + 1);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    width: min(24rem, calc(100vw - 2 * var(--space-4)));
+    max-height: min(32rem, 80vh);
+    padding: var(--space-4);
+    overflow: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+}
+
+.wp-bell__head,
+.wp-bell__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+.wp-bell__title {
+    margin: 0;
+    font-size: var(--text-base);
+}
+
+.wp-bell__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.wp-bell__item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.wp-bell__item:hover {
+    border-color: var(--color-text-muted);
+}
+
+.wp-bell__item--unread {
+    border-left: 3px solid var(--color-accent);
+    background: var(--color-surface);
+}
+
+.wp-bell__item--unread .wp-bell__item-title {
+    font-weight: 700;
+}
+
+.wp-bell__item-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+}
+
+.wp-bell__item-title {
+    overflow-wrap: anywhere;
+}
+
+.wp-bell__item-body {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.wp-bell__muted,
+.wp-bell__empty {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+}
+
+.wp-bell__empty {
+    padding: var(--space-4) 0;
+    text-align: center;
+}
+
+.wp-bell__error {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+}
+
+.wp-bell__error p,
+.wp-bell__error-text {
+    margin: 0;
+    color: var(--color-danger);
+    font-size: var(--text-sm);
+}
+
+.wp-bell__foot {
+    justify-content: flex-end;
+    font-size: var(--text-sm);
+}

@@ -1,0 +1,143 @@
+/* Notifications page: /notifications (spec 0020). Global (not scoped) so the shared Badge/Button children style too. */
+.wp-notes__muted {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+}
+
+.wp-notes__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+}
+
+.wp-notes__filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.wp-notes__chip,
+.wp-notes__page {
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    text-decoration: none;
+}
+
+.wp-notes__chip:hover,
+.wp-notes__page:hover {
+    color: var(--color-text);
+    border-color: var(--color-text-muted);
+}
+
+.wp-notes__chip--active,
+.wp-notes__chip--active:hover,
+.wp-notes__page--active,
+.wp-notes__page--active:hover {
+    border-color: var(--color-accent);
+    background: var(--color-accent);
+    color: var(--color-accent-contrast);
+}
+
+.wp-notes__list {
+    list-style: none;
+    margin: 0 0 var(--space-5);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.wp-notes__item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+}
+
+.wp-notes__item--unread {
+    border-left: 3px solid var(--color-accent);
+    background: var(--color-surface);
+}
+
+.wp-notes__main {
+    flex: 1 1 20rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+.wp-notes__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.wp-notes__unread-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-accent);
+}
+
+.wp-notes__title {
+    color: var(--color-text);
+    overflow-wrap: anywhere;
+}
+
+a.wp-notes__title:hover {
+    color: var(--color-accent);
+}
+
+.wp-notes__item--unread .wp-notes__title {
+    font-weight: 700;
+}
+
+.wp-notes__body {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+}
+
+.wp-notes__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.wp-notes__pages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.wp-notes__error {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px solid var(--color-danger);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+}
+
+.wp-notes__error p,
+.wp-notes__error-text {
+    margin: 0 0 var(--space-3);
+    color: var(--color-danger);
+}

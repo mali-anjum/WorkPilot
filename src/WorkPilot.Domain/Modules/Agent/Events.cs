@@ -31,4 +31,16 @@ public static class AgentRunFailureReasons
 
     /// <summary>The founder rejected the step's approval.</summary>
     public const string ApprovalRejected = "approval_rejected";
+
+    /// <summary>The reason in plain words, for a notification (spec 0020, AC-2); an unknown reason is shown as is.</summary>
+    public static string Describe(string reason) => reason switch
+    {
+        ProviderError => "The AI provider failed",
+        UnparseablePlan => "The AI answered with a plan that could not be read",
+        PolicyViolation => "The plan broke a safety policy",
+        StepFailed => "A step failed",
+        ApprovalGateRefused => "The approval gate refused a step",
+        ApprovalRejected => "You rejected an approval",
+        _ => string.IsNullOrWhiteSpace(reason) ? "Unknown reason" : reason,
+    };
 }

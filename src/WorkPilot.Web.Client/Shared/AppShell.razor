@@ -3,7 +3,7 @@
 <div class="wp-app-shell">
     <Sidebar />
     <div class="wp-app-shell__main">
-        <TopBar InitialTheme="@InitialTheme" />
+        <TopBar InitialTheme="@InitialTheme" Actions="@TopBarActions" />
         <main class="wp-app-shell__content">
             @ChildContent
         </main>
@@ -16,6 +16,9 @@
 
     /// <summary>The theme resolved server side at first paint, passed down so the toggle starts in sync.</summary>
     [Parameter] public string InitialTheme { get; set; } = "dark";
+
+    /// <summary>Controls the host adds to the top bar (spec 0020: the notification bell).</summary>
+    [Parameter] public RenderFragment? TopBarActions { get; set; }
 
     /// <summary>The routed page content.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }

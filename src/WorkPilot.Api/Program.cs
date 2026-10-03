@@ -16,6 +16,7 @@ using WorkPilot.Workers.Approvals;
 using WorkPilot.Workers.Audit;
 using WorkPilot.Workers.Common;
 using WorkPilot.Workers.Jobs;
+using WorkPilot.Workers.Notifications;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -65,6 +66,7 @@ builder.Services.AddApplicationsModule(builder.Configuration);
 builder.Services.AddApprovalsModule(builder.Configuration);
 builder.Services.AddAuditModule(builder.Configuration);
 builder.Services.AddJobsModule(builder.Configuration);
+builder.Services.AddNotificationsModule(builder.Configuration);
 builder.Services.AddProfileModule(builder.Configuration);
 // === End modules ===
 
@@ -213,6 +215,7 @@ app.MapAgentEndpoints();
 app.MapApprovalsEndpoints();
 app.MapAuditEndpoints();
 app.MapJobsEndpoints();
+app.MapNotificationsEndpoints();
 app.MapProfileEndpoints();
 // === End modules ===
 
