@@ -211,6 +211,7 @@ app.MapPost("/internal/identity/profile", async (
 // === Modules (alphabetical; one Add and one Map line each, spec 0018) ===
 app.MapAgentEndpoints();
 app.MapApprovalsEndpoints();
+app.MapAuditEndpoints();
 app.MapJobsEndpoints();
 app.MapProfileEndpoints();
 // === End modules ===

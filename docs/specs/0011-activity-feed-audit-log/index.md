@@ -1,19 +1,11 @@
 # 0011. Activity feed over the audit log
 
 **Date**: 2026-09-29
-**Status**: Proposed
+**Status**: Accepted
 
 ## Summary
 
 `/activity` becomes a timeline of everything the Agent and you did, read straight from the existing audit log (`AuditLog`), newest first, with filter chips for Agent, Jobs, Email, Calendar, System and Errors. Each entry gets a stored category (a new `Category` column set when the audit row is written, existing rows backfilled), so filtering stays fast and correct as new actions appear. Clicking an entry expands its evidence (the audit payload as readable key and value pairs), and entries about a job, a source, an approval or an agent run link to that page. No new table: the feed is a read model over `AuditLog`, owned by the Audit module.
-
-## Context
-
-Every meaningful action already writes an `AuditLog` row through `IAuditService.Record` in the same transaction as the change (spec 0002, spec 0018 exception list): ingestion runs, merges and splits, agent tool calls, approval requests, gate refusals, decisions, planning failures. Nothing shows them. You cannot see what the Agent did overnight, why a job merged, or which run failed, without querying Postgres.
-
-The scope asks for a timeline filterable by domain (Agent, Jobs, Email, Calendar, System, Errors). The audit row holds `Actor`, `Action`, `TargetType`, `TargetId`, `Payload` (JSON) and `OccurredAt`, but no domain label, and actions are free strings chosen by each module (`JobsIngested`, `ApprovalApproved`, a tool name such as `list_my_profile`). New modules in later waves (outreach, calendar, tasks) add more. The table has no index on `OccurredAt`, and it grows with every ingestion run.
-
-The product has one user; `AuditLog` has no profile column. The Api is internal only (spec 0004). The dashboard (#13) needs the latest few entries, so the read path must be reusable, not page code.
 
 ## Requirements
 
@@ -32,31 +24,14 @@ The product has one user; `AuditLog` has no profile column. The Api is internal 
 - **AC-7**: Loading, empty ("Nothing has happened yet" / "Nothing in this category yet") and error (message from ProblemDetails with a Retry button) states each render; a failed "Load more" keeps the entries already shown.
 - **AC-8**: `IActivityQuery.GetPageAsync` is the one read path; the dashboard (#13) reuses it for its latest 8 entries.
 
-## Options considered
-
-### Option 1: Stored category column (chosen)
-
-Add `AuditLog.Category`, set at write time from a Domain rule, backfilled once, indexed with `OccurredAt`.
-
-**Pros**: filtering is one indexed equality; a new action lands in a sensible category through the fallback rules, not nowhere; the rule lives in one Domain class that unit tests pin.
-**Cons**: a migration with a backfill over a table that only grows; changing the rules later needs another backfill for old rows.
-
-### Option 2: Map categories in the query
-
-No schema change; the feed query turns a category into a list of target types and actions.
-
-**Pros**: no migration, no backfill, rules change instantly for old rows too.
-**Cons**: an action missing from the map silently drops out of every filter; the `IN` list grows with each module and cannot use one clean index.
-
 ## Decision
+
+The context, the options weighed and the reasoning live in [rationale.md](rationale.md).
+
 
 **Chosen option**: Option 1: a stored `Category` on `AuditLog`, set by `IAuditService` from a Domain rule, with a cursor paged read model owned by the Audit module.
 
 **Implementation skills**: `ef-core` (`github/awesome-copilot`, `.agents/skills/ef-core/`) · `supabase-postgres-best-practices` (`supabase/agent-skills`, `.agents/skills/supabase-postgres-best-practices/`) · `csharp-xunit` (`github/awesome-copilot`, `.agents/skills/csharp-xunit/`)
-
-## Rationale
-
-The scope's done bar is that every meaningful action shows up. Option 2 fails that bar quietly: a module that adds an action and forgets the map makes it vanish from every filter. Option 1's fallback rules (below) always assign something, and the actor and target type are reliable signals that exist on every row. The backfill is a single `UPDATE` with the same `CASE` the Domain rule encodes, on a table that is still small, so its cost is paid once now rather than on every query. Cursor paging (keyset on `OccurredAt`, `Id`) keeps "Load more" correct while ingestion keeps inserting rows at the top, which offset paging would not.
 
 ## Feature design
 
@@ -66,7 +41,7 @@ The scope's done bar is that every meaningful action shows up. Option 2 fails th
 - Migration `AddActivityFeed`: column, indexes, and the backfill `UPDATE` fenced `// HAND WRITTEN (spec 0011): keep when regenerating`.
 
 **Category rule** (`WorkPilot.Domain/Modules/Audit/AuditCategories.cs`, first match wins; the backfill SQL mirrors it):
-1. `Errors`: action is `PlanningFailed` or `ApprovalGateRefused`, or ends with `Failed`.
+1. `Errors`: action is `PlanningFailed` or `ApprovalGateRefused`, or ends with `Failed`, or the writer marks it failed (a tool call that failed or failed verification; its action is the tool's own name). The backfill finds old failed tool calls by their payload, the `{"error": ...}` object `AdvanceRunJob` writes. Decided by you during the build, 2026-10-03.
 2. By target type: `Job`, `JobSource`, `JobMatch` → `Jobs`; `AgentRun`, `AgentStep`, `Approval` → `Agent`; `OutreachMessage`, `EmailThread`, `OutreachContact` → `Email`; `CalendarEvent` → `Calendar`.
 3. Actor is `Agent` → `Agent`.
 4. Otherwise `System`.

@@ -60,3 +60,8 @@ export function trapFocus(dialogEl) {
         },
     };
 }
+
+// The browser's IANA time zone (e.g. "Europe/Berlin"), so the server can show local times (spec 0011).
+export function timeZone() {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? null;
+}

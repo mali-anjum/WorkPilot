@@ -11,4 +11,7 @@ public class AuditLog : SoftDeletableEntity
     public required Guid TargetId { get; init; }
     public string? Payload { get; init; }
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>The activity feed's domain, set once from <see cref="AuditCategories.For"/> when the entry is recorded (spec 0011).</summary>
+    public ActivityCategory Category { get; init; } = ActivityCategory.System;
 }

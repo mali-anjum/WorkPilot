@@ -1,0 +1,273 @@
+@page "/activity"
+@using WorkPilot.Contracts.Audit
+@using WorkPilot.Web.Components.Audit
+@using WorkPilot.Web.Features.Audit
+@using WorkPilot.Web.Features.Common
+@using WorkPilot.Web.Features.Profile
+@implements IDisposable
+@inject IActivityApiClient ActivityApi
+@inject BrowserTimeZone TimeZone
+
+<HeadContent><link rel="stylesheet" href="css/activity.css" /></HeadContent>
+<PageTitle>Activity</PageTitle>
+
+<PageHeader Title="Activity" Description="Everything the Agent and you did, newest first. Open an entry to see its evidence." />
+
+<nav class="wp-activity__chips" aria-label="Filter by category">
+    @foreach (var chip in ActivitySummaries.Chips)
+    {
+        var active = IsActive(chip);
+        <a class="wp-activity__chip @(active ? "wp-activity__chip--active" : "")"
+           href="@(chip.Value is null ? "/activity" : $"/activity?category={chip.Value}")"
+           aria-current="@(active ? "page" : null)">@chip.Label</a>
+    }
+</nav>
+
+@if (_loading)
+{
+    <p class="wp-activity__muted" role="status">Loading activity…</p>
+}
+else if (_error is not null)
+{
+    <div class="wp-activity__error" role="alert">
+        <p>@_error</p>
+        <Button Variant="ButtonVariant.Secondary" Size="ButtonSize.Sm" OnClick="LoadFirstPageAsync">Retry</Button>
+    </div>
+}
+else if (_entries.Count == 0)
+{
+    <EmptyState Title="@(string.IsNullOrEmpty(Category) ? "Nothing has happened yet" : "Nothing in this category yet")"
+                Description="Ingestion runs, agent steps, approvals and failures show up here as they happen." />
+}
+else
+{
+    <ol class="wp-activity__list">
+        @foreach (var entry in _entries)
+        {
+            var open = _open.Contains(entry.Id);
+            var href = ActivitySummaries.TargetHref(entry.TargetType, entry.TargetId);
+            <li class="wp-activity__entry @(open ? "wp-activity__entry--open" : "")" @key="entry.Id">
+                <div class="wp-activity__row">
+                    <button type="button" class="wp-activity__toggle" aria-expanded="@(open ? "true" : "false")"
+                            aria-controls="@($"evidence-{entry.Id}")" @onclick="() => Toggle(entry.Id)">
+                        <span class="wp-activity__chevron" aria-hidden="true">@(open ? "▾" : "▸")</span>
+                        <span class="wp-activity__what">
+                            <span class="wp-activity__summary">@ActivitySummaries.Summary(entry)</span>
+                            <span class="wp-activity__muted">
+                                @ActivitySummaries.Who(entry.Actor, _profileId) ·
+                                <time datetime="@entry.OccurredAt.ToString("O")" title="@ActivitySummaries.Exact(entry.OccurredAt, TimeZone.Current)">@ActivitySummaries.Relative(entry.OccurredAt, _now, TimeZone.Current)</time>
+                            </span>
+                        </span>
+                    </button>
+                    <span class="wp-activity__tags">
+                        <Badge Status="@CategoryStatus(entry.Category)">@entry.Category</Badge>
+                        @if (href is not null)
+                        {
+                            <a class="wp-activity__target" href="@href">@ActivitySummaries.TargetLabel(entry.TargetType, entry.TargetId)</a>
+                        }
+                        else
+                        {
+                            <span class="wp-activity__target wp-activity__muted">@ActivitySummaries.TargetLabel(entry.TargetType, entry.TargetId)</span>
+                        }
+                    </span>
+                </div>
+                @if (open)
+                {
+                    <div id="@($"evidence-{entry.Id}")">
+                        <ActivityEvidence Payload="@entry.Payload" />
+                    </div>
+                }
+            </li>
+        }
+    </ol>
+
+    <div class="wp-activity__more">
+        @if (_moreError is not null)
+        {
+            <p class="wp-activity__error-text" role="alert">@_moreError</p>
+        }
+        @if (_next is not null)
+        {
+            <Button Variant="ButtonVariant.Secondary" Disabled="@_loadingMore" OnClick="LoadMoreAsync">
+                @(_loadingMore ? "Loading…" : _moreError is null ? "Load more" : "Retry")
+            </Button>
+        }
+        else
+        {
+            <p class="wp-activity__muted">You have reached the start of the feed.</p>
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    /// <summary>The selected category, from <c>?category=</c> (AC-2); empty for All.</summary>
+    [SupplyParameterFromQuery(Name = "category")]
+    public string? Category { get; set; }
+
+    private readonly List<ActivityEntryDto> _entries = [];
+    private readonly HashSet<Guid> _open = [];
+    private (DateTimeOffset At, Guid Id)? _next;
+    private Guid? _profileId;
+    private string? _loadedCategory;
+    private bool _initialized;
+    private bool _loading = true;
+    private bool _loadingMore;
+    private string? _error;
+    private string? _moreError;
+    private DateTimeOffset _now = DateTimeOffset.UtcNow;
+    private CancellationTokenSource _cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            _profileId = ProfileWebExtensions.ProfileId((await AuthState).User);
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // A chip click changes only the query string, so the page stays and its parameters change.
+        if (!_initialized || !string.Equals(_loadedCategory, Category, StringComparison.OrdinalIgnoreCase))
+        {
+            _initialized = true;
+            await LoadFirstPageAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !TimeZone.IsKnown)
+        {
+            await TimeZone.GetAsync();
+            if (TimeZone.IsKnown)
+            {
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task LoadFirstPageAsync()
+    {
+        var token = Restart();
+        _loadedCategory = Category;
+        _loading = true;
+        _error = null;
+        _moreError = null;
+        _entries.Clear();
+        _open.Clear();
+        _next = null;
+
+        var result = await FetchAsync(null, token);
+        if (token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        _now = DateTimeOffset.UtcNow;
+        _loading = false;
+        if (result.Succeeded)
+        {
+            Append(result.Value!);
+        }
+        else
+        {
+            _error = result.Error;
+        }
+    }
+
+    // A failed Load more keeps the entries already shown (AC-7).
+    private async Task LoadMoreAsync()
+    {
+        if (_next is not { } cursor || _loadingMore)
+        {
+            return;
+        }
+
+        _loadingMore = true;
+        _moreError = null;
+        var token = _cts.Token;
+        try
+        {
+            var result = await FetchAsync(cursor, token);
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (result.Succeeded)
+            {
+                Append(result.Value!);
+            }
+            else
+            {
+                _moreError = result.Error;
+            }
+        }
+        finally
+        {
+            _loadingMore = false;
+        }
+    }
+
+    // A cancelled load returns a failure the caller drops; an unreachable Api becomes a message.
+    private async Task<ApiResult<ActivityPageDto>> FetchAsync((DateTimeOffset At, Guid Id)? cursor, CancellationToken token)
+    {
+        try
+        {
+            return await ActivityApi.GetPageAsync(Category, cursor?.At, cursor?.Id, cancellationToken: token);
+        }
+        catch (OperationCanceledException)
+        {
+            return ApiResult<ActivityPageDto>.Fail("The request was cancelled.");
+        }
+        catch (HttpRequestException)
+        {
+            return ApiResult<ActivityPageDto>.Fail("The activity feed could not be reached. Try again in a moment.");
+        }
+    }
+
+    private void Append(ActivityPageDto page)
+    {
+        _entries.AddRange(page.Items);
+        _next = page.NextBefore is { } at && page.NextBeforeId is { } id ? (at, id) : null;
+    }
+
+    private void Toggle(Guid id)
+    {
+        if (!_open.Remove(id))
+        {
+            _open.Add(id);
+        }
+    }
+
+    // Cancels a load still in flight for the previous category, so its rows never land under the new one.
+    private CancellationToken Restart()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        _cts = new CancellationTokenSource();
+        return _cts.Token;
+    }
+
+    private bool IsActive(ActivityChip chip) =>
+        chip.Value is null ? string.IsNullOrEmpty(Category) : string.Equals(chip.Value, Category, StringComparison.OrdinalIgnoreCase);
+
+    private static StatusKind CategoryStatus(string category) => category switch
+    {
+        "Errors" => StatusKind.Danger,
+        "Agent" => StatusKind.Info,
+        "Jobs" => StatusKind.Success,
+        "Email" or "Calendar" => StatusKind.Warning,
+        _ => StatusKind.Neutral,
+    };
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

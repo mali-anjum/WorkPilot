@@ -1,0 +1,53 @@
+@using WorkPilot.Web.Features.Audit
+
+@* An activity entry's evidence (spec 0011, AC-4): top level key and value pairs, nested values as
+   indented JSON, plain text for a payload that is not JSON, and a truncated view over 10 KB. *@
+<div class="wp-activity__evidence">
+    @if (Payload is null)
+    {
+        <p class="wp-activity__muted">No evidence was recorded for this entry.</p>
+    }
+    else if (ActivitySummaries.IsLarge(Payload) && !_showAll)
+    {
+        <pre class="wp-activity__code">@ActivitySummaries.Truncate(Payload)…</pre>
+        <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Sm" OnClick="() => _showAll = true">Show all</Button>
+    }
+    else if (ActivitySummaries.Evidence(Payload) is { } view)
+    {
+        @if (view.Text is not null)
+        {
+            <pre class="wp-activity__code">@view.Text</pre>
+        }
+        else if (view.Fields.Count == 0)
+        {
+            <p class="wp-activity__muted">The evidence is empty.</p>
+        }
+        else
+        {
+            <dl class="wp-activity__fields">
+                @foreach (var field in view.Fields)
+                {
+                    <dt>@field.Key</dt>
+                    <dd>
+                        @if (field.IsJson)
+                        {
+                            <pre class="wp-activity__code">@field.Value</pre>
+                        }
+                        else
+                        {
+                            @field.Value
+                        }
+                    </dd>
+                }
+            </dl>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>The entry's payload, as stored (JSON, or null when none was recorded).</summary>
+    [Parameter]
+    public string? Payload { get; set; }
+
+    private bool _showAll;
+}
