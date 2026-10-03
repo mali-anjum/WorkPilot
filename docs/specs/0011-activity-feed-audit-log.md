@@ -1,7 +1,7 @@
 # 0011. Activity feed over the audit log
 
 **Date**: 2026-09-29
-**Status**: Proposed
+**Status**: In Progress
 
 ## Summary
 

@@ -91,10 +91,17 @@ The highest risk feature in the product. Browser worker (Playwright class toolin
 **Done when:** for at least one real, permitted target, an approved application is submitted, evidence of success or a clear "uncertain, needs review" state is captured, and no scenario silently reports success without evidence.
 - [ ] Design it (spec): `/architect application execution engine`
 
-### 19. Activity feed & audit log
+### 19. Activity feed & audit log · in-progress
 `/activity` timeline of everything the Agent and user did, filterable by domain (Agent, Jobs, Email, Calendar, System, Errors).
 **Done when:** every meaningful action anywhere in the product (who, what, when, why, target, result, evidence) shows up here.
-- [ ] Design it (spec): `/architect activity feed & audit log` (Wave 1, spec 0018 section 9)
+- [x] Design it (spec): `/architect activity feed & audit log` → [0011](../specs/0011-activity-feed-audit-log.md)
+- [x] Build it: `/develop activity feed & audit log` (code in `src/*/Modules/Audit/`, `Api/Endpoints/AuditEndpoints.cs`, `Contracts/Audit/`, `Web/Features/Audit/`, `Web/Components/{Pages/Audit,Audit}/`, `Web/Features/Common/BrowserTimeZone.cs`, migration `AddActivityFeed`)
+  - [x] Category rule, `AddActivityFeed` migration with backfill, `IActivityQuery` and `GET /internal/audit/activity`, `/activity` page with Load more and nav item (AC-1, AC-3, AC-8)
+  - [x] Category chips bound to the URL, 400 for bad input (AC-2)
+  - [x] Summaries, who, browser time zone, evidence expander, target links (AC-4, AC-5, AC-6)
+  - [x] Loading, empty and error states (AC-7)
+- [ ] Verify it: `/check verify activity feed & audit log`
+- [ ] Test it: `/test activity feed & audit log`
 
 ### 20. Notifications
 Approval required, application submitted/failed, reply received, interview upcoming, deadline approaching, workflow failed, integration expired; priority levels (Info/Success/Warning/Action Required/Error).
