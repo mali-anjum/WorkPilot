@@ -115,3 +115,4 @@ Approval required, application submitted/failed, reply received, interview upcom
 - [x] Verify it: `/check verify notifications` → [verify.md](../specs/0020-notifications/verify.md)
 - [x] Test it: `/test notifications` (`NotificationTests`, `StrongMatchDigestTests`, `AgentRunFailureReasonTextTests`, Api `NotificationsTests`, `NotificationBellTests`, `NotificationsPageTests`, `NotificationDisplayTests`, `NotificationsApiClientTests`)
 - [x] Review it (fresh model): `/check review` → [review](../reviews/2026-10-03-feat-notifications.md)
+- [x] Document it: `/document pr`
