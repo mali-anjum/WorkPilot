@@ -34,7 +34,7 @@ public static class NotificationDisplay
     public static StatusKind PriorityStatus(string priority) => priority switch
     {
         "Error" => StatusKind.Danger,
-        "ActionRequired" => StatusKind.Warning,
+        "ActionRequired" or "Warning" => StatusKind.Warning,
         "Success" => StatusKind.Success,
         "Info" => StatusKind.Info,
         _ => StatusKind.Neutral,
