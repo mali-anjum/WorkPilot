@@ -4,6 +4,7 @@
 <header class="wp-topbar">
     <div class="wp-topbar__hint">Press <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>K</kbd> to search</div>
     <div class="wp-topbar__actions">
+        @Actions
         <Button Variant="ButtonVariant.Secondary"
                 Size="ButtonSize.Sm"
                 AriaLabel="@(_theme == "dark" ? "Switch to light mode" : "Switch to dark mode")"
@@ -23,6 +24,9 @@
 
     /// <summary>The theme read server side at first paint (from <c>App.razor</c>), so the toggle starts in sync.</summary>
     [Parameter] public string InitialTheme { get; set; } = "dark";
+
+    /// <summary>Extra controls a host puts in the top bar before the theme toggle (the notification bell, spec 0020).</summary>
+    [Parameter] public RenderFragment? Actions { get; set; }
 
     protected override void OnInitialized()
     {

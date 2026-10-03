@@ -1,0 +1,324 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using WorkPilot.Web.Client.Shared
+@using WorkPilot.Contracts.Notifications
+@using WorkPilot.Web.Features.Audit
+@using WorkPilot.Web.Features.Common
+@using WorkPilot.Web.Features.Profile
+@implements IDisposable
+@inject INotificationsApiClient NotificationsApi
+@inject NavigationManager Navigation
+@inject BrowserTimeZone TimeZone
+
+<div class="wp-bell">
+    <button type="button" class="wp-bell__button" aria-label="@NotificationDisplay.BellLabel(_count)"
+            aria-haspopup="dialog" aria-expanded="@(_open ? "true" : "false")" aria-controls="wp-bell-drawer"
+            @onclick="ToggleAsync">
+        <span aria-hidden="true">🔔</span>
+        @if (NotificationDisplay.CountLabel(_count) is { } label)
+        {
+            <span class="wp-bell__count" data-testid="bell-count">@label</span>
+        }
+    </button>
+
+    @if (_open)
+    {
+        <button type="button" class="wp-bell__scrim" aria-label="Close notifications" tabindex="-1" @onclick="Close"></button>
+        <section id="wp-bell-drawer" class="wp-bell__drawer" role="dialog" aria-label="Notifications" @onkeydown="OnKeyDown">
+            <header class="wp-bell__head">
+                <h2 class="wp-bell__title">Notifications</h2>
+                <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Sm" Disabled="@(_count == 0 || _markingAll)" OnClick="MarkAllReadAsync">Mark all read</Button>
+            </header>
+
+            @if (_loading)
+            {
+                <p class="wp-bell__muted" role="status">Loading notifications…</p>
+            }
+            else if (_error is not null)
+            {
+                <div class="wp-bell__error" role="alert">
+                    <p>@_error</p>
+                    <Button Variant="ButtonVariant.Secondary" Size="ButtonSize.Sm" OnClick="LoadLatestAsync">Retry</Button>
+                </div>
+            }
+            else if (_items.Count == 0)
+            {
+                <p class="wp-bell__empty">You're all caught up.</p>
+            }
+            else
+            {
+                <ul class="wp-bell__list">
+                    @foreach (var item in _items)
+                    {
+                        <li @key="item.Id">
+                            <button type="button" class="wp-bell__item @(item.ReadAt is null ? "wp-bell__item--unread" : "")" @onclick="() => OpenAsync(item)">
+                                <span class="wp-bell__item-head">
+                                    <Badge Status="@NotificationDisplay.PriorityStatus(item.Priority)">@NotificationDisplay.PriorityLabel(item.Priority)</Badge>
+                                    <time class="wp-bell__muted" datetime="@item.CreatedAt.ToString("O")">@ActivitySummaries.Relative(item.CreatedAt, _now, TimeZone.Current)</time>
+                                </span>
+                                <span class="wp-bell__item-title">@item.Title</span>
+                                @if (item.Body is not null)
+                                {
+                                    <span class="wp-bell__item-body">@item.Body</span>
+                                }
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+
+            @if (_actionError is not null)
+            {
+                <p class="wp-bell__error-text" role="alert">@_actionError</p>
+            }
+
+            <footer class="wp-bell__foot">
+                <a href="/notifications" @onclick="Close">See all</a>
+            </footer>
+        </section>
+    }
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    /// <summary>How often the unread count refreshes while the page is open (AC-4); 15 seconds.</summary>
+    [Parameter] public TimeSpan RefreshInterval { get; set; } = NotificationDisplay.RefreshInterval;
+
+    private readonly List<NotificationDto> _items = [];
+    private readonly CancellationTokenSource _cts = new();
+    private PeriodicTimer? _timer;
+    private Guid? _profileId;
+    private int _count;
+    private bool _open;
+    private bool _loading;
+    private bool _markingAll;
+    private string? _error;
+    private string? _actionError;
+    private DateTimeOffset _now = DateTimeOffset.UtcNow;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            _profileId = ProfileWebExtensions.ProfileId((await AuthState).User);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Only the interactive render gets here (never prerendering), so the timer lives exactly as
+        // long as the circuit: Dispose stops it when the circuit closes (AC-4).
+        if (!firstRender || _profileId is null)
+        {
+            return;
+        }
+
+        Navigation.LocationChanged += OnLocationChanged;
+        _timer = new PeriodicTimer(RefreshInterval);
+        _ = PollAsync(_timer, _cts.Token);
+        await RefreshCountAsync();
+    }
+
+    private async Task PollAsync(PeriodicTimer timer, CancellationToken token)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                await InvokeAsync(RefreshCountAsync);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The circuit closed.
+        }
+        catch (ObjectDisposedException)
+        {
+            // The timer was disposed with the component.
+        }
+    }
+
+    // A failed refresh keeps the last count; the next tick tries again (AC-9).
+    private async Task RefreshCountAsync()
+    {
+        if (_profileId is not { } profileId || _cts.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await NotificationsApi.GetUnreadCountAsync(profileId, _cts.Token);
+            if (result.Succeeded && result.Value!.Count != _count)
+            {
+                _count = result.Value.Count;
+                StateHasChanged();
+            }
+        }
+        catch (HttpRequestException)
+        {
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) =>
+        _ = InvokeAsync(async () =>
+        {
+            _open = false;
+            StateHasChanged();
+            await RefreshCountAsync();
+        });
+
+    private async Task ToggleAsync()
+    {
+        if (_open)
+        {
+            Close();
+            return;
+        }
+
+        _open = true;
+        _actionError = null;
+        await LoadLatestAsync();
+    }
+
+    private void Close() => _open = false;
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            Close();
+        }
+    }
+
+    private async Task LoadLatestAsync()
+    {
+        if (_profileId is not { } profileId)
+        {
+            return;
+        }
+
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+        await TimeZone.GetAsync();
+        try
+        {
+            var result = await NotificationsApi.GetPageAsync(profileId, unreadOnly: false, page: 1, NotificationDisplay.DrawerSize, _cts.Token);
+            _now = DateTimeOffset.UtcNow;
+            _items.Clear();
+            if (result.Succeeded)
+            {
+                _items.AddRange(result.Value!.Items);
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Notifications could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        finally
+        {
+            _loading = false;
+        }
+
+        await RefreshCountAsync();
+    }
+
+    // Marks the notification read, then opens its link (AC-4). A failed mark still navigates.
+    private async Task OpenAsync(NotificationDto item)
+    {
+        if (_profileId is not { } profileId)
+        {
+            return;
+        }
+
+        if (item.ReadAt is null)
+        {
+            try
+            {
+                var result = await NotificationsApi.SetReadAsync(profileId, item.Id, read: true, _cts.Token);
+                if (result.Succeeded)
+                {
+                    Replace(result.Value!);
+                    _count = Math.Max(0, _count - 1);
+                }
+            }
+            catch (HttpRequestException)
+            {
+            }
+        }
+
+        _open = false;
+        if (NotificationDisplay.SafeLink(item.Link) is { } link)
+        {
+            Navigation.NavigateTo(link);
+        }
+    }
+
+    private async Task MarkAllReadAsync()
+    {
+        if (_profileId is not { } profileId)
+        {
+            return;
+        }
+
+        _markingAll = true;
+        _actionError = null;
+        try
+        {
+            var result = await NotificationsApi.MarkAllReadAsync(profileId, _cts.Token);
+            if (result.Succeeded)
+            {
+                _count = 0;
+                var now = DateTimeOffset.UtcNow;
+                for (var i = 0; i < _items.Count; i++)
+                {
+                    _items[i] = _items[i] with { ReadAt = _items[i].ReadAt ?? now };
+                }
+            }
+            else
+            {
+                _actionError = result.Error;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _actionError = "Notifications could not be reached. Try again in a moment.";
+        }
+        finally
+        {
+            _markingAll = false;
+        }
+    }
+
+    private void Replace(NotificationDto updated)
+    {
+        var index = _items.FindIndex(i => i.Id == updated.Id);
+        if (index >= 0)
+        {
+            _items[index] = updated;
+        }
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        _cts.Cancel();
+        _timer?.Dispose();
+        _cts.Dispose();
+    }
+}
