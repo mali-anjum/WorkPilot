@@ -124,7 +124,7 @@ Tracer Bullet: one event all the way to the bell first, then the rest.
 2. [x] Drawer and list: `GET /internal/notifications`, read, read all, dismiss endpoints on `Result<T>`; drawer with the latest 10; `/notifications` page with paging and the unread toggle. Satisfies **AC-4**, **AC-5**, **AC-8**.
 3. [x] More sources: `notifications.on-agent-run-failed` with readable reasons; `notifications.on-job-matched` digest with row lock and dedupe. Satisfies **AC-2**, **AC-3**, **AC-6**.
 4. [x] Cleanup recurring job and its option. Satisfies **AC-7**.
-5. [ ] States and tests (states built; tests owed to `/test`): loading, empty and error states; Domain unit tests (digest, link validation, reason text); Api integration tests (real Postgres) for handlers through `HandleEventJob`, replay, concurrency, scoping and cleanup; bUnit tests for the bell. Satisfies **AC-1** to **AC-9**.
+5. [x] States and tests: loading, empty and error states; Domain unit tests (digest, link validation, reason text); Api integration tests (real Postgres) for handlers through `HandleEventJob`, replay, concurrency, scoping and cleanup; bUnit tests for the bell. Satisfies **AC-1** to **AC-9**.
 
 ## Consequences
 

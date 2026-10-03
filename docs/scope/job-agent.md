@@ -113,4 +113,4 @@ Approval required, application submitted/failed, reply received, interview upcom
   - [x] Run failed handler with readable reasons; strong match digest with row lock and dedupe (AC-2, AC-3, AC-6)
   - [x] `notifications.cleanup` recurring job and `Notifications:ReadRetentionDays` (AC-7); loading, empty and error states (AC-9)
 - [x] Verify it: `/check verify notifications` → [verify.md](../specs/0020-notifications/verify.md)
-- [ ] Test it: `/test notifications`
+- [x] Test it: `/test notifications` (`NotificationTests`, `StrongMatchDigestTests`, `AgentRunFailureReasonTextTests`, Api `NotificationsTests`, `NotificationBellTests`, `NotificationsPageTests`, `NotificationDisplayTests`, `NotificationsApiClientTests`)
