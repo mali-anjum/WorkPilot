@@ -1,0 +1,655 @@
+@page "/jobs"
+@using System.Globalization
+@using WorkPilot.Contracts.Jobs
+@using WorkPilot.Web.Features.Audit
+@using WorkPilot.Web.Features.Common
+@using WorkPilot.Web.Features.Jobs
+@using WorkPilot.Web.Features.Profile
+@implements IDisposable
+@inject IJobsApiClient JobsApi
+@inject BrowserTimeZone TimeZone
+@inject NavigationManager Navigation
+
+<HeadContent>
+    <link rel="stylesheet" href="css/matching.css" />
+    <link rel="stylesheet" href="css/jobs.css" />
+</HeadContent>
+<PageTitle>Jobs</PageTitle>
+
+<div class="wp-jobs__header">
+    <PageHeader Title="Jobs" Description="Every discovered job, scored against your profile. Narrow it down, rule jobs out, and open one for the full analysis." />
+    <Button Variant="ButtonVariant.Secondary" OnClick="() => _sourcesOpen = true">Job sources</Button>
+</div>
+
+@if (_list is { ProfileIncomplete: true })
+{
+    <p class="wp-match__banner" role="status">
+        Scores need a complete profile: yours has no skills or no experience yet.
+        <a href="/profile">Complete your profile</a> to get real matches.
+    </p>
+}
+
+<div class="wp-jobs__layout">
+    <aside class="wp-jobs__filters" aria-label="Filters">
+        <form class="wp-jobs__form" role="search" aria-label="Filter jobs" @onsubmit="ApplyTextAsync" @onsubmit:preventDefault>
+            <label>
+                <span>Search</span>
+                <input type="search" placeholder="Title or company" @bind="_q" @bind:event="oninput" @onchange="ApplyTextAsync" />
+            </label>
+
+            <label>
+                <span>Company</span>
+                <select value="@(Company ?? "")" @onchange="e => SetAsync(QCompany, Text(e))">
+                    <option value="">Any company</option>
+                    @foreach (var company in CompanyChoices)
+                    {
+                        <option value="@company">@company</option>
+                    }
+                </select>
+            </label>
+
+            <label>
+                <span>Location</span>
+                <input type="text" placeholder="City or country" @bind="_location" @bind:event="oninput" @onchange="ApplyTextAsync" />
+            </label>
+
+            <label>
+                <span>Remote</span>
+                <select value="@(Remote ?? "")" @onchange="e => SetAsync(QRemote, Text(e))">
+                    <option value="">Any</option>
+                    @foreach (var remote in RemoteChoices)
+                    {
+                        <option value="@remote">@remote</option>
+                    }
+                </select>
+            </label>
+
+            <label>
+                <span>Source</span>
+                <select value="@(Source?.ToString() ?? "")" @onchange="e => SetAsync(QSource, Text(e))">
+                    <option value="">Any source</option>
+                    @foreach (var source in _facets?.Sources ?? [])
+                    {
+                        <option value="@source.Id">@JobDisplay.SourceLabel(source.Type) · @BoardName(source.Name)</option>
+                    }
+                </select>
+            </label>
+
+            <label>
+                <span>Minimum score</span>
+                <input type="number" min="0" max="100" step="1" placeholder="0 to 100" @bind="_minScore" @bind:event="oninput" @onchange="ApplyTextAsync" />
+            </label>
+
+            <label>
+                <span>Posted within</span>
+                <select value="@(Posted?.ToString(CultureInfo.InvariantCulture) ?? "")" @onchange="e => SetAsync(QPosted, Text(e))">
+                    <option value="">Any time</option>
+                    <option value="1">Last 24 hours</option>
+                    <option value="7">Last 7 days</option>
+                    <option value="30">Last 30 days</option>
+                </select>
+            </label>
+
+            <label>
+                <span>Minimum salary</span>
+                <input type="number" min="0" step="1000" placeholder="Top of range at least" @bind="_salaryMin" @bind:event="oninput" @onchange="ApplyTextAsync" />
+            </label>
+
+            <label class="wp-jobs__check">
+                <input type="checkbox" checked="@HideBlocked" @onchange="e => ToggleAsync(QHideBlocked, e)" />
+                <span>Hide blocked jobs</span>
+            </label>
+
+            <label class="wp-jobs__check">
+                <input type="checkbox" checked="@ShowDismissed" @onchange="e => ToggleAsync(QDismissed, e)" />
+                <span>Show dismissed</span>
+            </label>
+
+            <div class="wp-jobs__form-actions">
+                <Button Type="submit" Variant="ButtonVariant.Primary" Size="ButtonSize.Sm">Apply</Button>
+                <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Sm" Disabled="!HasFilters" OnClick="ClearFilters">Clear filters</Button>
+            </div>
+        </form>
+    </aside>
+
+    <section class="wp-jobs__results" aria-label="Jobs">
+        <div class="wp-jobs__toolbar">
+            <p class="wp-match__muted" aria-live="polite">
+                @if (_list is not null && !_loading)
+                {
+                    @(_list.Total == 1 ? "1 job" : $"{_list.Total.ToString("#,0", CultureInfo.InvariantCulture)} jobs")
+                }
+            </p>
+            <label class="wp-jobs__sort">
+                <span>Sort by</span>
+                <select value="@(IsNewest ? JobSorts.Newest : JobSorts.Score)" @onchange="e => SetAsync(QSort, Text(e) == JobSorts.Newest ? JobSorts.Newest : null)">
+                    <option value="@JobSorts.Score">Best match</option>
+                    <option value="@JobSorts.Newest">Newest</option>
+                </select>
+            </label>
+        </div>
+
+        @if (_undo is not null)
+        {
+            <p class="wp-jobs__notice" role="status">
+                Dismissed <strong>@_undo.Title</strong>.
+                <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Sm" Disabled="@_busy.Contains(_undo.JobId)" OnClick="() => UndoAsync(_undo)">Undo</Button>
+            </p>
+        }
+
+        @if (_actionError is not null)
+        {
+            <p class="wp-match__error" role="alert">@_actionError</p>
+        }
+
+        @if (_loading)
+        {
+            <ul class="wp-jobs__list" aria-busy="true" aria-label="Loading jobs">
+                @for (var i = 0; i < 5; i++)
+                {
+                    <li class="wp-jobs__row wp-jobs__row--skeleton" aria-hidden="true"><span></span><span></span></li>
+                }
+            </ul>
+            <p class="wp-match__muted" role="status">Loading jobs…</p>
+        }
+        else if (_error is not null)
+        {
+            <div class="wp-jobs__error" role="alert">
+                <p>@_error</p>
+                <div class="wp-jobs__actions">
+                    <Button Variant="ButtonVariant.Secondary" Size="ButtonSize.Sm" OnClick="LoadAsync">Retry</Button>
+                    @if (HasFilters)
+                    {
+                        <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Sm" OnClick="ClearFilters">Clear filters</Button>
+                    }
+                </div>
+            </div>
+        }
+        else if (_list is { Items.Count: 0 })
+        {
+            @if (HasFilters)
+            {
+                <EmptyState Title="No jobs match these filters" Description="Loosen a filter or clear them all to see every job." Icon="🔍" />
+                <div class="wp-jobs__empty-action">
+                    <Button Variant="ButtonVariant.Secondary" OnClick="ClearFilters">Clear filters</Button>
+                </div>
+            }
+            else if (_facets is { Companies.Count: > 0 })
+            {
+                <EmptyState Title="Nothing left to review" Description="You dismissed every job. New ones show up here as your sources run." Icon="✅" />
+                <div class="wp-jobs__empty-action">
+                    <Button Variant="ButtonVariant.Secondary" OnClick="ShowDismissedAsync">Show dismissed</Button>
+                </div>
+            }
+            else
+            {
+                <EmptyState Title="No jobs yet" Description="Add a company's Greenhouse or Lever board and its jobs are fetched, deduplicated and scored against your profile." Icon="💼" />
+                <div class="wp-jobs__empty-action">
+                    <Button Variant="ButtonVariant.Primary" OnClick="() => _sourcesOpen = true">Add a job source</Button>
+                </div>
+            }
+        }
+        else if (_list is not null)
+        {
+            <ul class="wp-jobs__list">
+                @foreach (var item in _list.Items)
+                {
+                    var reason = JobDisplay.NotScoredReason(item.MatchStatus);
+                    <li class="wp-jobs__row @(item.Dismissed ? "wp-jobs__row--dismissed" : "")" @key="item.JobId">
+                        <div class="wp-jobs__score">
+                            @if (item.Score is not null)
+                            {
+                                <Badge Status="@JobDisplay.ScoreStatus(item.Score, item.HasBlocker)">@JobDisplay.ScoreLabel(item)</Badge>
+                            }
+                            else
+                            {
+                                <span class="wp-jobs__unscored">Not scored</span>
+                                @if (item.MatchStatus == JobMatchStatuses.ProfileIncomplete)
+                                {
+                                    <a class="wp-jobs__reason" href="/profile">@reason</a>
+                                }
+                                else
+                                {
+                                    <span class="wp-jobs__reason">@reason</span>
+                                }
+                            }
+                        </div>
+                        <div class="wp-jobs__main">
+                            <a class="wp-jobs__title" href="@($"/jobs/{item.JobId}")">@item.Title</a>
+                            <span class="wp-jobs__company">@item.Company@(item.Location is null ? "" : $" · {item.Location}")</span>
+                            <div class="wp-jobs__meta">
+                                @if (item.HasBlocker)
+                                {
+                                    <Badge Status="StatusKind.Danger">Blocker</Badge>
+                                }
+                                @if (item.RemoteType is not null)
+                                {
+                                    <Badge Status="StatusKind.Info">@item.RemoteType</Badge>
+                                }
+                                @foreach (var source in item.SourceTypes)
+                                {
+                                    <Badge Status="StatusKind.Neutral">@JobDisplay.SourceLabel(source)</Badge>
+                                }
+                                @{ var posted = item.PostedAt ?? item.FirstSeenAt; }
+                                <time class="wp-match__muted" datetime="@posted.ToString("O")" title="@ActivitySummaries.Exact(posted, TimeZone.Current)">
+                                    @(item.PostedAt is null ? "First seen" : "Posted") @ActivitySummaries.Relative(posted, _now, TimeZone.Current)
+                                </time>
+                                @if (item.Dismissed)
+                                {
+                                    <Badge Status="StatusKind.Warning">Dismissed</Badge>
+                                }
+                            </div>
+                        </div>
+                        <div class="wp-jobs__actions">
+                            @if (item.Dismissed)
+                            {
+                                <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Sm" Disabled="@_busy.Contains(item.JobId)" AriaLabel="@($"Undo dismiss of {item.Title}")" OnClick="() => UndoAsync(item)">Undo</Button>
+                            }
+                            else
+                            {
+                                <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Sm" Disabled="@_busy.Contains(item.JobId)" AriaLabel="@($"Dismiss {item.Title}")" OnClick="() => DismissAsync(item)">Dismiss</Button>
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+
+            @if (TotalPages > 1)
+            {
+                <nav class="wp-jobs__pages" aria-label="Pages">
+                    @foreach (var number in JobDisplay.PageWindow(CurrentPage, TotalPages))
+                    {
+                        if (number is { } n)
+                        {
+                            <a class="wp-jobs__page @(n == CurrentPage ? "wp-jobs__page--active" : "")"
+                               href="@PageHref(n)"
+                               aria-label="@($"Page {n}")"
+                               aria-current="@(n == CurrentPage ? "page" : null)">@n</a>
+                        }
+                        else
+                        {
+                            <span class="wp-jobs__gap" aria-hidden="true">…</span>
+                        }
+                    }
+                </nav>
+            }
+        }
+    </section>
+</div>
+
+<JobSourcesDrawer @bind-IsOpen="_sourcesOpen" />
+
+@code {
+    // The URL names of the filters (AC-2); `source` matches the activity feed's /jobs?source={id} links.
+    private const string QText = "q";
+    private const string QCompany = "company";
+    private const string QLocation = "location";
+    private const string QRemote = "remote";
+    private const string QSource = "source";
+    private const string QMinScore = "minScore";
+    private const string QPosted = "posted";
+    private const string QSalaryMin = "salaryMin";
+    private const string QHideBlocked = "hideBlocked";
+    private const string QDismissed = "dismissed";
+    private const string QSort = "sort";
+    private const string QPage = "page";
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    [SupplyParameterFromQuery(Name = QText)] public string? Q { get; set; }
+    [SupplyParameterFromQuery(Name = QCompany)] public string? Company { get; set; }
+    [SupplyParameterFromQuery(Name = QLocation)] public string? Location { get; set; }
+    [SupplyParameterFromQuery(Name = QRemote)] public string? Remote { get; set; }
+    [SupplyParameterFromQuery(Name = QSource)] public Guid? Source { get; set; }
+    [SupplyParameterFromQuery(Name = QMinScore)] public int? MinScore { get; set; }
+    [SupplyParameterFromQuery(Name = QPosted)] public int? Posted { get; set; }
+    [SupplyParameterFromQuery(Name = QSalaryMin)] public decimal? SalaryMin { get; set; }
+    [SupplyParameterFromQuery(Name = QHideBlocked)] public bool HideBlocked { get; set; }
+    [SupplyParameterFromQuery(Name = QDismissed)] public bool ShowDismissed { get; set; }
+    [SupplyParameterFromQuery(Name = QSort)] public string? Sort { get; set; }
+    [SupplyParameterFromQuery(Name = QPage)] public int? Page { get; set; }
+
+    private readonly HashSet<Guid> _busy = [];
+    private readonly CancellationTokenSource _lifetime = new();
+    private CancellationTokenSource _cts = new();
+    private Guid? _profileId;
+    private JobListQuery? _loaded;
+    private MatchListDto? _list;
+    private JobFacetsDto? _facets;
+    private JobListItemDto? _undo;
+    private bool _loading = true;
+    private bool _sourcesOpen;
+    private string? _error;
+    private string? _actionError;
+    private DateTimeOffset _now = DateTimeOffset.UtcNow;
+
+    // The text boxes edit a draft; it goes into the URL on Enter or when the box loses focus.
+    private string? _q;
+    private string? _location;
+    private int? _minScore;
+    private decimal? _salaryMin;
+
+    private int CurrentPage => Page is > 0 ? Page.Value : 1;
+
+    private bool IsNewest => Sort == JobSorts.Newest;
+
+    private int TotalPages => _list is null ? 1 : JobDisplay.PageCount(_list.Total, JobDisplay.PageSize);
+
+    private bool HasFilters =>
+        !string.IsNullOrWhiteSpace(Q) || !string.IsNullOrWhiteSpace(Company) || !string.IsNullOrWhiteSpace(Location)
+        || !string.IsNullOrWhiteSpace(Remote) || Source is not null || MinScore is not null || Posted is not null
+        || SalaryMin is not null || HideBlocked || ShowDismissed;
+
+    // The current choice stays listed even when no listed job has it any more.
+    private IEnumerable<string> CompanyChoices => WithCurrent(_facets?.Companies, Company);
+
+    private IEnumerable<string> RemoteChoices => WithCurrent(_facets?.RemoteTypes, Remote);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            _profileId = ProfileWebExtensions.ProfileId((await AuthState).User);
+        }
+
+        if (_profileId is { } profileId)
+        {
+            try
+            {
+                var facets = await JobsApi.GetFacetsAsync(profileId, _lifetime.Token);
+                _facets = facets.Value;
+            }
+            catch (HttpRequestException)
+            {
+                // The filters fall back to free values; the list load reports the outage.
+            }
+            catch (OperationCanceledException)
+            {
+                // The page was left.
+            }
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // A filter, sort or page change only changes the query string: the page stays and reloads.
+        var query = CurrentQuery();
+        if (_loaded != query)
+        {
+            _q = Q;
+            _location = Location;
+            _minScore = MinScore;
+            _salaryMin = SalaryMin;
+            await LoadAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !TimeZone.IsKnown)
+        {
+            await TimeZone.GetAsync();
+            if (TimeZone.IsKnown)
+            {
+                StateHasChanged();
+            }
+        }
+    }
+
+    private JobListQuery CurrentQuery() => new()
+    {
+        Page = CurrentPage,
+        PageSize = JobDisplay.PageSize,
+        Q = Blank(Q),
+        Company = Blank(Company),
+        Location = Blank(Location),
+        RemoteType = Blank(Remote),
+        SourceId = Source,
+        MinScore = MinScore,
+        PostedWithinDays = Posted,
+        SalaryMin = SalaryMin,
+        HideBlocked = HideBlocked,
+        IncludeDismissed = ShowDismissed,
+        Sort = IsNewest ? JobSorts.Newest : null,
+    };
+
+    private async Task LoadAsync()
+    {
+        var token = Restart();
+        var query = CurrentQuery();
+        _loaded = query;
+        _loading = true;
+        _error = null;
+        if (_profileId is not { } profileId)
+        {
+            _loading = false;
+            _error = "Your session has no profile. Sign out and in again.";
+            return;
+        }
+
+        try
+        {
+            var result = await JobsApi.SearchAsync(profileId, query, token);
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            _now = DateTimeOffset.UtcNow;
+            _list = result.Value;
+            _error = result.Error;
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Jobs could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        _loading = false;
+    }
+
+    private async Task DismissAsync(JobListItemDto item)
+    {
+        if (_profileId is not { } profileId || !_busy.Add(item.JobId))
+        {
+            return;
+        }
+
+        _actionError = null;
+        try
+        {
+            var result = await JobsApi.DismissAsync(item.JobId, profileId, _lifetime.Token);
+            if (!result.Succeeded)
+            {
+                // A failed dismiss leaves the row as it was (AC-8).
+                _actionError = result.Error;
+                return;
+            }
+
+            if (ShowDismissed)
+            {
+                Replace(item with { Dismissed = true });
+            }
+            else
+            {
+                _undo = item;
+                await RemoveAsync(item);
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _actionError = "Jobs could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            // The page was left mid request.
+        }
+        finally
+        {
+            _busy.Remove(item.JobId);
+        }
+    }
+
+    private async Task UndoAsync(JobListItemDto item)
+    {
+        if (_profileId is not { } profileId || !_busy.Add(item.JobId))
+        {
+            return;
+        }
+
+        _actionError = null;
+        try
+        {
+            var result = await JobsApi.UndoDismissAsync(item.JobId, profileId, _lifetime.Token);
+            if (!result.Succeeded)
+            {
+                _actionError = result.Error;
+                return;
+            }
+
+            if (_undo?.JobId == item.JobId)
+            {
+                // Back into the list at its sorted place.
+                _undo = null;
+                _busy.Remove(item.JobId);
+                await LoadAsync();
+            }
+            else
+            {
+                Replace(item with { Dismissed = false });
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _actionError = "Jobs could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            // The page was left mid request.
+        }
+        finally
+        {
+            _busy.Remove(item.JobId);
+        }
+    }
+
+    // A dismissed row leaves the list; an emptied page shows what is left, here or on the last page.
+    private async Task RemoveAsync(JobListItemDto item)
+    {
+        if (_list is null)
+        {
+            return;
+        }
+
+        var items = _list.Items.Where(i => i.JobId != item.JobId).ToList();
+        _list = _list with { Items = items, Total = Math.Max(0, _list.Total - 1) };
+        if (items.Count > 0 || _list.Total == 0)
+        {
+            return;
+        }
+
+        var page = Math.Min(CurrentPage, TotalPages);
+        if (page == CurrentPage)
+        {
+            await LoadAsync();
+        }
+        else
+        {
+            Navigation.NavigateTo(PageHref(page));
+        }
+    }
+
+    private void Replace(JobListItemDto updated)
+    {
+        if (_list is not null)
+        {
+            _list = _list with { Items = _list.Items.Select(i => i.JobId == updated.JobId ? updated : i).ToList() };
+        }
+    }
+
+    private Task ApplyTextAsync()
+    {
+        var unchanged = Blank(_q) == Blank(Q) && Blank(_location) == Blank(Location) && _minScore == MinScore && _salaryMin == SalaryMin;
+        if (!unchanged)
+        {
+            Go(new Dictionary<string, object?>
+            {
+                [QText] = Blank(_q),
+                [QLocation] = Blank(_location),
+                [QMinScore] = _minScore,
+                [QSalaryMin] = _salaryMin,
+            });
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task SetAsync(string name, string? value)
+    {
+        Go(new Dictionary<string, object?> { [name] = Blank(value) });
+        return Task.CompletedTask;
+    }
+
+    private Task ToggleAsync(string name, ChangeEventArgs e) => SetAsync(name, IsChecked(e) ? "true" : null);
+
+    private Task ShowDismissedAsync() => SetAsync(QDismissed, "true");
+
+    private void ClearFilters()
+    {
+        _undo = null;
+        Go(new Dictionary<string, object?>
+        {
+            [QText] = null,
+            [QCompany] = null,
+            [QLocation] = null,
+            [QRemote] = null,
+            [QSource] = null,
+            [QMinScore] = null,
+            [QPosted] = null,
+            [QSalaryMin] = null,
+            [QHideBlocked] = null,
+            [QDismissed] = null,
+        });
+    }
+
+    // Every filter change goes back to page 1 (AC-2).
+    private void Go(Dictionary<string, object?> changes)
+    {
+        changes[QPage] = null;
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters(changes));
+    }
+
+    private string PageHref(int page) => Navigation.GetUriWithQueryParameter(QPage, page == 1 ? null : page);
+
+    // Cancels a load still in flight for the previous query, so its rows never land under the new one.
+    private CancellationToken Restart()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        _cts = new CancellationTokenSource();
+        return _cts.Token;
+    }
+
+    private static IEnumerable<string> WithCurrent(IReadOnlyList<string>? choices, string? current) =>
+        string.IsNullOrWhiteSpace(current) || choices?.Contains(current) == true ? choices ?? [] : [current, .. choices ?? []];
+
+    private static string? Text(ChangeEventArgs e) => e.Value?.ToString();
+
+    private static bool IsChecked(ChangeEventArgs e) => e.Value is true || e.Value?.ToString() == "true";
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    // A stored source name is "<type>:<board>"; the board is what you typed.
+    private static string BoardName(string name) => name.Contains(':') ? name[(name.IndexOf(':') + 1)..] : name;
+
+    // Cancel only: a handler still awaiting may read a token after this, which a disposed source would throw on.
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _lifetime.Cancel();
+    }
+}

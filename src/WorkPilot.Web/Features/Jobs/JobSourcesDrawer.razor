@@ -1,0 +1,367 @@
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@using WorkPilot.Contracts.Jobs
+@using WorkPilot.Web.Client.Shared
+@using WorkPilot.Web.Features.Audit
+@using WorkPilot.Web.Features.Common
+@implements IAsyncDisposable
+@inject IJobsApiClient JobsApi
+@inject BrowserTimeZone TimeZone
+@inject IJSRuntime JS
+
+@* The Job sources drawer on /jobs (spec 0021, AC-6): every board with its jobs and last run, Run now,
+   and a form to add a Greenhouse or Lever board. A side sheet with the Modal's dialog contract. *@
+@if (IsOpen)
+{
+    <div class="wp-drawer-backdrop" @onclick="CloseAsync">
+        @* Focusable, and its buttons never disable while busy, so focus stays inside and Escape always reaches it. *@
+        <div class="wp-drawer" role="dialog" aria-modal="true" aria-labelledby="wp-sources-title" tabindex="-1"
+             @onclick:stopPropagation="true" @onkeydown="OnKeyDown" @ref="_dialog">
+            <div class="wp-drawer__header">
+                <h2 id="wp-sources-title" class="wp-drawer__title">Job sources</h2>
+                <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Sm" AriaLabel="Close" OnClick="CloseAsync">✕</Button>
+            </div>
+
+            <div class="wp-drawer__body">
+                <section class="wp-sources__section" aria-labelledby="wp-sources-add">
+                    <h3 id="wp-sources-add" class="wp-sources__heading">Add a board</h3>
+                    <form class="wp-jobs__form" @onsubmit="AddAsync" @onsubmit:preventDefault novalidate>
+                        <label>
+                            <span>Source</span>
+                            <select @bind="_type" aria-invalid="@Invalid("source")" aria-describedby="wp-source-type-error">
+                                <option value="greenhouse">Greenhouse</option>
+                                <option value="lever">Lever</option>
+                            </select>
+                            @if (FieldError("source") is { } typeError)
+                            {
+                                <span id="wp-source-type-error" class="wp-sources__field-error">@typeError</span>
+                            }
+                        </label>
+                        <label>
+                            <span>Board token</span>
+                            <input type="text" @bind="_board" placeholder="@(_type == "lever" ? "e.g. netflix" : "e.g. gitlab")" autocomplete="off"
+                                   aria-invalid="@Invalid("boardToken")" aria-describedby="wp-source-board-hint wp-source-board-error" />
+                            <span id="wp-source-board-hint" class="wp-match__muted">The name in the board's URL: @(_type == "lever" ? "jobs.lever.co/<name>" : "boards.greenhouse.io/<name>").</span>
+                            @if (FieldError("boardToken") is { } boardError)
+                            {
+                                <span id="wp-source-board-error" class="wp-sources__field-error">@boardError</span>
+                            }
+                        </label>
+                        <label>
+                            <span>Company name <span class="wp-match__muted">(optional)</span></span>
+                            <input type="text" @bind="_company" maxlength="200" autocomplete="organization"
+                                   aria-invalid="@Invalid("companyName")" aria-describedby="wp-source-company-error" />
+                            @if (FieldError("companyName") is { } companyError)
+                            {
+                                <span id="wp-source-company-error" class="wp-sources__field-error">@companyError</span>
+                            }
+                        </label>
+                        @if (_addError is not null)
+                        {
+                            <p class="wp-match__error" role="alert">@_addError</p>
+                        }
+                        <div class="wp-jobs__form-actions">
+                            <Button Type="submit" Variant="ButtonVariant.Primary" Size="ButtonSize.Sm">@(_adding ? "Adding…" : "Add and fetch jobs")</Button>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="wp-sources__section" aria-labelledby="wp-sources-list">
+                    <div class="wp-sources__list-head">
+                        <h3 id="wp-sources-list" class="wp-sources__heading">Your boards</h3>
+                        <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Sm" Disabled="_loading" OnClick="LoadAsync">Refresh</Button>
+                    </div>
+
+                    @if (_message is not null)
+                    {
+                        <p class="wp-match__message" role="status">@_message</p>
+                    }
+
+                    @if (_loading && _sources is null)
+                    {
+                        <p class="wp-match__muted" role="status">Loading sources…</p>
+                    }
+                    else if (_error is not null)
+                    {
+                        <div class="wp-jobs__error" role="alert">
+                            <p>@_error</p>
+                            <Button Variant="ButtonVariant.Secondary" Size="ButtonSize.Sm" OnClick="LoadAsync">Retry</Button>
+                        </div>
+                    }
+                    else if (_sources is { Count: 0 })
+                    {
+                        <p class="wp-match__muted">No boards yet. Add one above and its jobs are fetched right away.</p>
+                    }
+                    else if (_sources is not null)
+                    {
+                        <ul class="wp-sources__list">
+                            @foreach (var source in _sources)
+                            {
+                                <li class="wp-sources__item" @key="source.Id">
+                                    <div class="wp-sources__main">
+                                        <div class="wp-sources__title">
+                                            <Badge Status="StatusKind.Neutral">@JobDisplay.SourceLabel(source.Type)</Badge>
+                                            <strong>@Board(source.Name)</strong>
+                                            @if (source.CompanyName is not null)
+                                            {
+                                                <span class="wp-match__muted">· @source.CompanyName</span>
+                                            }
+                                        </div>
+                                        <span class="wp-match__muted">
+                                            @(source.JobCount == 1 ? "1 job" : $"{source.JobCount} jobs") ·
+                                            @if (source.LastRunAt is { } lastRun)
+                                            {
+                                                <span title="@ActivitySummaries.Exact(lastRun, TimeZone.Current)">last run @ActivitySummaries.Relative(lastRun, DateTimeOffset.UtcNow, TimeZone.Current): @(source.LastRunCreated ?? 0) new, @(source.LastRunUpdated ?? 0) updated</span>
+                                            }
+                                            else
+                                            {
+                                                <span>Never run</span>
+                                            }
+                                        </span>
+                                    </div>
+                                    <Button Variant="ButtonVariant.Secondary" Size="ButtonSize.Sm"
+                                            AriaLabel="@($"Run {Board(source.Name)} now")" OnClick="() => RunAsync(source)">
+                                        @(_running.Contains(source.Id) ? "Queuing…" : "Run now")
+                                    </Button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Whether the drawer is open.</summary>
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    /// <summary>Two way binding companion for <see cref="IsOpen"/>.</summary>
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    private readonly HashSet<Guid> _running = [];
+    private readonly CancellationTokenSource _lifetime = new();
+    private ElementReference _dialog;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _focusTrap;
+    private bool _wasOpen;
+    private IReadOnlyList<JobSourceSummaryDto>? _sources;
+    private IReadOnlyDictionary<string, string[]>? _fieldErrors;
+    private bool _loading;
+    private bool _adding;
+    private string? _error;
+    private string? _addError;
+    private string? _message;
+    private string _type = "greenhouse";
+    private string? _board;
+    private string? _company;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Each opening shows fresh counts and runs.
+        if (IsOpen && !_wasOpen)
+        {
+            _wasOpen = true;
+            _message = null;
+            await LoadAsync();
+        }
+        else if (!IsOpen)
+        {
+            _wasOpen = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            if (IsOpen && _focusTrap is null)
+            {
+                _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/interop.js");
+                _focusTrap = await _module.InvokeAsync<IJSObjectReference>("trapFocus", _dialog);
+                if (!TimeZone.IsKnown)
+                {
+                    await TimeZone.GetAsync();
+                    StateHasChanged();
+                }
+            }
+            else if (!IsOpen && _focusTrap is not null)
+            {
+                await ReleaseFocusTrapAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // The circuit closed; nothing is left to focus.
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var result = await JobsApi.ListSourcesAsync(_lifetime.Token);
+            _sources = result.Value;
+            _error = result.Error;
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Job sources could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        if (_adding)
+        {
+            return;
+        }
+
+        _adding = true;
+        _addError = null;
+        _fieldErrors = null;
+        _message = null;
+        try
+        {
+            var company = string.IsNullOrWhiteSpace(_company) ? null : _company;
+            var result = await JobsApi.AddSourceAsync(new TriggerJobIngestionRequest(_type, _board, CompanyName: company), _lifetime.Token);
+            if (result.Succeeded)
+            {
+                _message = $"Added {Board(_board ?? "")}. Its jobs are being fetched; refresh in a moment to see the run.";
+                _board = null;
+                _company = null;
+                await LoadAsync();
+            }
+            else if (result.FieldErrors is { Count: > 0 })
+            {
+                // Shown next to each field (AC-6).
+                _fieldErrors = result.FieldErrors;
+            }
+            else
+            {
+                _addError = result.Error;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _addError = "Job sources could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            // The page was left mid request.
+        }
+        finally
+        {
+            _adding = false;
+        }
+    }
+
+    private async Task RunAsync(JobSourceSummaryDto source)
+    {
+        if (!_running.Add(source.Id))
+        {
+            return;
+        }
+
+        _message = null;
+        _error = null;
+        try
+        {
+            var result = await JobsApi.RunSourceAsync(source.Id, _lifetime.Token);
+            if (result.Succeeded)
+            {
+                _message = $"Run queued for {Board(source.Name)}. Refresh in a moment to see it.";
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Job sources could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            // The page was left mid request.
+        }
+        finally
+        {
+            _running.Remove(source.Id);
+        }
+    }
+
+    private string? FieldError(string field) =>
+        _fieldErrors?.FirstOrDefault(e => string.Equals(e.Key, field, StringComparison.OrdinalIgnoreCase)).Value?.FirstOrDefault();
+
+    private string? Invalid(string field) => FieldError(field) is null ? null : "true";
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await CloseAsync();
+        }
+    }
+
+    private async Task CloseAsync()
+    {
+        await ReleaseFocusTrapAsync();
+        IsOpen = false;
+        _wasOpen = false;
+        await IsOpenChanged.InvokeAsync(false);
+    }
+
+    private async Task ReleaseFocusTrapAsync()
+    {
+        if (_focusTrap is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _focusTrap.InvokeVoidAsync("dispose");
+            await _focusTrap.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The circuit closed with the drawer open.
+        }
+
+        _focusTrap = null;
+    }
+
+    // A stored source name is "<type>:<board>"; the board is what you typed.
+    private static string Board(string name) => name.Contains(':') ? name[(name.IndexOf(':') + 1)..] : name;
+
+    public async ValueTask DisposeAsync()
+    {
+        _lifetime.Cancel();
+        await ReleaseFocusTrapAsync();
+        if (_module is not null)
+        {
+            try
+            {
+                await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Every full page load closes a circuit (AGENTS.md, Blazor).
+            }
+        }
+    }
+}

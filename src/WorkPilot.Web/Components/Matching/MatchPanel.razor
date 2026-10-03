@@ -1,0 +1,192 @@
+@using WorkPilot.Application.Modules.Jobs.Matching
+@using WorkPilot.Web.Features.Audit
+@using WorkPilot.Web.Features.Jobs
+
+@* The Agent's analysis of one job for your profile (spec 0019, AC-10): the score, why it matches,
+   what is missing or unknown, blockers, unverified items, and Rescore. The right column of /jobs/{id} (spec 0021, AC-5). *@
+<section class="wp-match-panel" aria-label="Agent analysis">
+    <div class="wp-match-panel__summary">
+        <div class="wp-match-panel__score">
+            <span class="wp-match__big-score">@(Match.Score?.ToString() ?? "–")</span>
+            <span class="wp-match__muted">out of 100</span>
+        </div>
+        <div class="wp-match__summary-tags">
+            <Badge Status="@JobDisplay.ScoreStatus(Match.Score, Match.HasBlocker)">@Match.Confidence confidence</Badge>
+            @if (Match.HasBlocker)
+            {
+                <Badge Status="StatusKind.Danger">Blocker</Badge>
+            }
+            <time class="wp-match__muted" datetime="@Match.RankedAt.ToString("O")" title="@ActivitySummaries.Exact(Match.RankedAt, Zone)">
+                Scored @ActivitySummaries.Relative(Match.RankedAt, Now, Zone)
+            </time>
+        </div>
+        @if (CanRescore)
+        {
+            <Button Variant="ButtonVariant.Secondary" Size="ButtonSize.Sm" Disabled="Busy" OnClick="OnRescore">@(Busy ? "Rescoring…" : "Rescore")</Button>
+        }
+    </div>
+
+    @if (Match.Score is null)
+    {
+        <p class="wp-match__banner" role="status">Not enough information to score this job.</p>
+    }
+
+    @if (Match.Explanation.ExtractionFailed)
+    {
+        <p class="wp-match__banner" role="status">
+            The job's requirements could not be read, so only its location and title were scored.
+            @if (Match.FailureReason is not null)
+            {
+                <span class="wp-match__muted"> (@Match.FailureReason)</span>
+            }
+            Rescore to try again.
+        </p>
+    }
+
+    @if (Match.Explanation.Blockers.Count > 0)
+    {
+        <Card Title="Blockers">
+            <ul class="wp-match__items">
+                @foreach (var item in Match.Explanation.Blockers)
+                {
+                    <MatchEvidence Item="item" />
+                }
+            </ul>
+        </Card>
+    }
+
+    <Card Title="Why it matches">
+        @{ var reasons = Match.Explanation.Dimensions.SelectMany(d => d.Items).Where(i => i.Status is "Met" or "Partial").ToList(); }
+        @if (reasons.Count == 0)
+        {
+            <p class="wp-match__muted">Nothing in this posting matches your profile yet.</p>
+        }
+        else
+        {
+            <ul class="wp-match__items">
+                @foreach (var item in reasons)
+                {
+                    <MatchEvidence Item="item" />
+                }
+            </ul>
+        }
+    </Card>
+
+    <Card Title="Missing requirements">
+        @if (Match.Explanation.Missing.Count == 0)
+        {
+            <p class="wp-match__muted">Nothing required is missing.</p>
+        }
+        else
+        {
+            <ul class="wp-match__items">
+                @foreach (var item in Match.Explanation.Missing)
+                {
+                    <MatchEvidence Item="item" />
+                }
+            </ul>
+        }
+    </Card>
+
+    <Card Title="Unknown information">
+        @if (Match.Explanation.Unknown.Count == 0)
+        {
+            <p class="wp-match__muted">Every dimension was scored.</p>
+        }
+        else
+        {
+            <ul class="wp-match__items">
+                @foreach (var unknown in Match.Explanation.Unknown)
+                {
+                    <li class="wp-match__item"><strong>@Label(unknown.Dimension)</strong> <span class="wp-match__muted">@Reason(unknown.Reason)</span></li>
+                }
+            </ul>
+        }
+    </Card>
+
+    <Card Title="Score breakdown">
+        <table class="wp-match__table">
+            <thead><tr><th scope="col">Dimension</th><th scope="col">Result</th><th scope="col">Points</th></tr></thead>
+            <tbody>
+                @foreach (var dimension in Match.Explanation.Dimensions)
+                {
+                    <tr>
+                        <th scope="row">@Label(dimension.Name)</th>
+                        <td><Badge Status="@StatusOf(dimension.Status)">@dimension.Status</Badge></td>
+                        <td>@(dimension.Status == "Unknown" ? "not counted" : $"{dimension.Earned:0.##} / {dimension.Weight}")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </Card>
+
+    @if (Match.Explanation.Unverified.Count > 0)
+    {
+        <Card Title="Unverified (not counted)">
+            <p class="wp-match__muted">The reader quoted text that is not in the posting, so these scored nothing.</p>
+            <ul class="wp-match__items">
+                @foreach (var item in Match.Explanation.Unverified)
+                {
+                    <li class="wp-match__item"><strong>@item.Label</strong> <span class="wp-match__muted">(@Label(item.Dimension))</span>
+                        @if (!string.IsNullOrWhiteSpace(item.JobQuote))
+                        {
+                            <blockquote class="wp-match__quote">@item.JobQuote</blockquote>
+                        }
+                    </li>
+                }
+            </ul>
+        </Card>
+    }
+</section>
+
+@code {
+    /// <summary>The match to show.</summary>
+    [Parameter, EditorRequired]
+    public JobMatchDetailDto Match { get; set; } = null!;
+
+    /// <summary>Whether the Rescore button shows (not for a job that is no longer listed).</summary>
+    [Parameter]
+    public bool CanRescore { get; set; } = true;
+
+    /// <summary>True while a rescore request is in flight.</summary>
+    [Parameter]
+    public bool Busy { get; set; }
+
+    /// <summary>Raised by the Rescore button.</summary>
+    [Parameter]
+    public EventCallback OnRescore { get; set; }
+
+    /// <summary>The viewer's time zone, for the scored time.</summary>
+    [Parameter]
+    public TimeZoneInfo Zone { get; set; } = TimeZoneInfo.Utc;
+
+    /// <summary>"Now", for the relative scored time.</summary>
+    [Parameter]
+    public DateTimeOffset Now { get; set; } = DateTimeOffset.UtcNow;
+
+    private static string Label(string dimension) => dimension switch
+    {
+        "JobType" => "Job type",
+        "WorkAuthorization" => "Work authorization",
+        "Location" => "Location and remote",
+        _ => dimension,
+    };
+
+    private static string Reason(string reason) => reason switch
+    {
+        "JobSilent" => "the job did not say",
+        "ProfileNotSet" => "your profile does not say",
+        "CurrencyDiffers" => "the salary is in another currency or period",
+        "ExtractionFailed" => "the requirements could not be read",
+        "Unparseable" => "the location could not be read",
+        _ => reason,
+    };
+
+    private static StatusKind StatusOf(string status) => status switch
+    {
+        "Met" => StatusKind.Success,
+        "Partial" => StatusKind.Warning,
+        "Missed" or "Blocker" => StatusKind.Danger,
+        _ => StatusKind.Neutral,
+    };
+}
