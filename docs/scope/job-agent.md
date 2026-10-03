@@ -46,7 +46,7 @@ Scores a canonical Job against the user's Profile (skills, experience, education
 - [x] Verify it: `/check verify job matching engine & scoring` → [verify](../specs/0019-job-matching-engine/verify.md)
 - [x] Test it: `/test job matching engine & scoring`
 - [x] Review it (fresh model): `/check review` → [review](../reviews/2026-10-03-feat-job-matching-engine.md)
-- [ ] Document it: `/document pr`
+- [x] Document it: `/document pr`
 
 ### 12. Jobs list & job detail
 `/jobs` list with filters (location, remote, salary, experience, technology, company, job type, source, match score, date posted, visa sponsorship) and the two column job detail (job info + agent analysis) per the product spec.
