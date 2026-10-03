@@ -93,6 +93,12 @@ public static class MatchProfileRules
     /// <summary>Longest preferred city.</summary>
     public const int MaxCityLength = 100;
 
+    /// <summary>Largest minimum salary the <c>numeric(12,2)</c> column holds.</summary>
+    public const decimal MaxSalary = 9_999_999_999.99m;
+
+    /// <summary>Longest experience description.</summary>
+    public const int MaxDescriptionLength = 4000;
+
     /// <summary>
     /// Every broken rule, keyed by the field it belongs to (<c>salaryCurrency</c>,
     /// <c>experiences[2].endDate</c>); empty when the draft is valid. Codes are compared upper case.
@@ -149,6 +155,11 @@ public static class MatchProfileRules
             Add("minSalary", "Minimum salary cannot be negative.");
         }
 
+        if (p.MinSalary is > MaxSalary)
+        {
+            Add("minSalary", "Minimum salary is too large.");
+        }
+
         var currency = string.IsNullOrWhiteSpace(p.SalaryCurrency) ? null : p.SalaryCurrency.Trim().ToUpperInvariant();
         if (currency is not null && !IsoCodes.IsCurrency(currency))
         {
@@ -200,6 +211,11 @@ public static class MatchProfileRules
             if (row.EndDate is { } end && end < row.StartDate)
             {
                 Add($"experiences[{i}].endDate", "End date cannot be before the start date.");
+            }
+
+            if (row.Description is { Length: > MaxDescriptionLength })
+            {
+                Add($"experiences[{i}].description", $"Description must be at most {MaxDescriptionLength} characters.");
             }
         }
 

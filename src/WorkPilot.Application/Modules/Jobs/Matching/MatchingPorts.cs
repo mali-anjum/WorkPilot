@@ -135,8 +135,10 @@ public static class MatchingJson
     /// </summary>
     public static readonly JsonSerializerOptions Options = CreateOptions();
 
+    /// <summary>Serializes <paramref name="value"/> with <see cref="Options"/>.</summary>
     public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
 
+    /// <summary>Deserializes <paramref name="json"/> with <see cref="Options"/>.</summary>
     public static T? Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json, Options);
 
     private static JsonSerializerOptions CreateOptions()

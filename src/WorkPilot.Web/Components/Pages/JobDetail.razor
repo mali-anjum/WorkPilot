@@ -18,6 +18,16 @@
     {
         <Button Variant="ButtonVariant.Secondary" Disabled="_busy" OnClick="RescoreAsync">Rescore this job</Button>
     }
+
+    @if (_notice is not null)
+    {
+        <p class="wp-match__message" role="status">@_notice</p>
+    }
+
+    @if (_actionError is not null)
+    {
+        <p class="wp-match__error" role="alert">@_actionError</p>
+    }
 }
 else if (_match is null)
 {
@@ -35,7 +45,10 @@ else
             {
                 <Badge Status="StatusKind.Danger">Blocker</Badge>
             }
-            <a href="@_match.JobUrl" target="_blank" rel="noopener noreferrer">View the posting</a>
+            @if (IsWebUrl(_match.JobUrl))
+            {
+                <a href="@_match.JobUrl" target="_blank" rel="noopener noreferrer">View the posting</a>
+            }
             <span class="wp-match__muted">Scored @_match.RankedAt.ToString("yyyy-MM-dd HH:mm") UTC</span>
         </span>
         <Button Variant="ButtonVariant.Secondary" Disabled="_busy" OnClick="RescoreAsync">Rescore</Button>
@@ -44,6 +57,11 @@ else
     @if (_notice is not null)
     {
         <p class="wp-match__message" role="status">@_notice</p>
+    }
+
+    @if (_actionError is not null)
+    {
+        <p class="wp-match__error" role="alert">@_actionError</p>
     }
 
     @if (_match.Score is null)
@@ -170,10 +188,15 @@ else
     private Guid _profileId;
     private string? _error;
     private string? _notice;
+    private string? _actionError;
     private bool _busy;
 
     protected override async Task OnParametersSetAsync()
     {
+        _match = null;
+        _error = null;
+        _notice = null;
+        _actionError = null;
         if (AuthState is null || ProfileWebExtensions.ProfileId((await AuthState).User) is not { } profileId)
         {
             _error = "Your session has no profile; sign in again.";
@@ -197,19 +220,21 @@ else
         try
         {
             var result = await JobsApi.RescoreAsync(JobId, _profileId);
+            // A failed rescore is shown beside the panel, never in place of it.
             _notice = result.Succeeded
                 ? result.Value!.Queued ? "Rescore queued. Reload in a moment to see the new score." : "A rescore is already running for this job."
                 : null;
-            if (!result.Succeeded)
-            {
-                _error = result.Error;
-            }
+            _actionError = result.Succeeded ? null : result.Error;
         }
         finally
         {
             _busy = false;
         }
     }
+
+    // The posting URL comes from an external feed: only http and https become links.
+    private static bool IsWebUrl(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
 
     private static string Label(string dimension) => dimension switch
     {

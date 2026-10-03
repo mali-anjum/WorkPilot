@@ -782,6 +782,22 @@ public class JobMatchingTests
         Assert.Contains("educations[0].endDate", errors.Keys);
     }
 
+    // covers: AC-11
+    [Fact]
+    public void Values_past_the_column_limits_are_rejected()
+    {
+        var draft = new MatchProfileDraft(
+            Preferences(minSalary: 10_000_000_000m, currency: "USD"),
+            [],
+            [new ExperienceDraft(null, "Acme", "Engineer", new DateOnly(2020, 1, 1), null, new string('d', 4001))],
+            []);
+
+        var errors = MatchProfileRules.Validate(draft);
+
+        Assert.Contains("minSalary", errors.Keys);
+        Assert.Contains("experiences[0].description", errors.Keys);
+    }
+
     [Theory]
     [InlineData(1000, null, "salaryCurrency")]
     [InlineData(null, "USD", "minSalary")]

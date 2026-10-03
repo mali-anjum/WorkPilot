@@ -98,6 +98,20 @@ public class JobMatchingTests(SharedApiFactory factory) : IAsyncLifetime
         Assert.Equal($"https://matchboard.test/{jobId:N}"[..22], match.JobUrl[..22]);
     }
 
+    // covers: AC-1 (review finding: a job joined in the run that created it)
+    [Fact]
+    public async Task Two_same_key_postings_in_one_run_raise_one_content_changed_for_their_new_job()
+    {
+        var sourceId = await SeedSourceAsync();
+
+        await IngestAsync(sourceId, T0, Posting("1", "Platform Engineer", "Paris", MatchingDescription), Posting("2", "Platform Engineer", "Paris", MatchingDescription));
+
+        await using var db = CreateDbContext();
+        var jobId = Assert.Single(await JobIdsAsync(db));
+        Assert.Equal(2, await db.JobSourceLinks.CountAsync(l => l.JobId == jobId));
+        Assert.Single(await OutboxTestHelpers.EventsMentioningAsync(db, jobId), e => e.EventName == "jobs.job-content-changed.v1");
+    }
+
     // covers: AC-1
     [Fact]
     public async Task Extraction_is_skipped_when_the_content_is_already_extracted()
@@ -482,6 +496,23 @@ public class JobMatchingTests(SharedApiFactory factory) : IAsyncLifetime
         await using var db = CreateDbContext();
         var events = await OutboxTestHelpers.EventsMentioningAsync(db, profileId);
         Assert.Contains(events, e => e.EventName == "profile.match-profile-changed.v1");
+    }
+
+    // covers: AC-11 (review finding: inputs past the database limits)
+    [Fact]
+    public async Task Inputs_past_the_database_limits_are_field_errors_not_server_errors()
+    {
+        var profileId = await SeedProfileAsync(Document());
+        using var client = factory.CreateClient();
+        var (document, etag) = await GetProfileAsync(client, profileId);
+
+        var huge = await PutProfileAsync(client, profileId, document with { MinSalary = 10_000_000_000m, SalaryCurrency = "USD" }, etag);
+        var nullRow = await PutProfileAsync(client, profileId, document with { Skills = ["C#", null!] }, etag);
+
+        Assert.Equal(HttpStatusCode.BadRequest, huge.StatusCode);
+        Assert.Contains("minSalary", await huge.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.BadRequest, nullRow.StatusCode);
+        Assert.Contains("skills[1]", await nullRow.Content.ReadAsStringAsync());
     }
 
     [Fact]

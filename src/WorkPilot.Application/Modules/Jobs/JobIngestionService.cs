@@ -224,10 +224,16 @@ public sealed class JobIngestionService(
             }
 
             var key = JobSources.KeyOf(posting);
-            var existing = createdThisRun.GetValueOrDefault(key) ?? await FindJobToJoinAsync(key, cancellationToken);
+            var createdEarlier = createdThisRun.GetValueOrDefault(key);
+            var existing = createdEarlier ?? await FindJobToJoinAsync(key, cancellationToken);
             if (existing is not null)
             {
-                content.Stamp([existing]);
+                // A job created earlier in this run stays unstamped, so it is published as new.
+                if (createdEarlier is null)
+                {
+                    content.Stamp([existing]);
+                }
+
                 involved.Add(existing);
                 var sighting = existing.AttachLink(jobSourceId, posting, seenAt, source.ProvenanceConfidence);
                 repository.AddLink(sighting.Link);

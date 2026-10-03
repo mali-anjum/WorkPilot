@@ -38,6 +38,12 @@ public sealed class MatchProfileService(WorkPilotDbContext db, IEventPublisher e
             return Result<VersionedMatchProfile>.PreconditionFailed(StaleMessage);
         }
 
+        var nullRows = NullRowErrors(document);
+        if (nullRows.Count > 0)
+        {
+            return Result<VersionedMatchProfile>.Invalid(nullRows);
+        }
+
         var (draft, errors) = ToDraft(document);
         foreach (var (field, messages) in MatchProfileRules.Validate(draft))
         {
@@ -108,10 +114,13 @@ public sealed class MatchProfileService(WorkPilotDbContext db, IEventPublisher e
             await db.Database.ExecuteSqlRawAsync(
                 """
                 INSERT INTO app.skills ("Id", "Name")
-                SELECT gen_random_uuid(), name FROM unnest(@names) AS name
+                SELECT id, name FROM unnest(@ids, @names) AS s(id, name)
                 ON CONFLICT ("Name") DO NOTHING
                 """,
-                [new NpgsqlParameter("names", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = names }],
+                [
+                    new NpgsqlParameter("ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = names.Select(_ => Guid.CreateVersion7()).ToArray() },
+                    new NpgsqlParameter("names", NpgsqlDbType.Array | NpgsqlDbType.Text) { Value = names },
+                ],
                 cancellationToken);
         }
 
@@ -257,6 +266,31 @@ public sealed class MatchProfileService(WorkPilotDbContext db, IEventPublisher e
             .Select(e => new ExperienceDraft(e.Id, e.Company ?? string.Empty, e.Title ?? string.Empty, e.StartDate, e.EndDate, e.Description))
             .ToList();
         return (new MatchProfileDraft(preferences, document.Skills ?? [], experiences, educations), errors);
+    }
+
+    // A JSON null inside a list is a field error, not a crash.
+    private static Dictionary<string, string[]> NullRowErrors(MatchProfileDocument document)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        void Check<T>(IReadOnlyList<T?>? rows, string field)
+        {
+            for (var i = 0; i < (rows?.Count ?? 0); i++)
+            {
+                if (rows![i] is null)
+                {
+                    errors[$"{field}[{i}]"] = ["This entry is empty."];
+                }
+            }
+        }
+
+        Check(document.TargetRoles, "targetRoles");
+        Check(document.PreferredLocations, "preferredLocations");
+        Check(document.JobTypes, "jobTypes");
+        Check(document.AuthorizedCountries, "authorizedCountries");
+        Check(document.Skills, "skills");
+        Check(document.Experiences, "experiences");
+        Check(document.Educations, "educations");
+        return errors;
     }
 
     /// <summary>The ETag of a row version: its xmin as a quoted decimal string.</summary>

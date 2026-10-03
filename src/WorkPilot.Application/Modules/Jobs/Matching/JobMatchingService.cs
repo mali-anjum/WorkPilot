@@ -73,19 +73,22 @@ public sealed class JobMatchingService(
 
         await repository.SaveChangesAsync(cancellationToken);
 
+        // Only the model call counts as an attempt: a failed save below propagates as itself.
+        JobRequirementExtraction extraction;
         try
         {
-            var extraction = await extractor.ExtractAsync(settings.Truncate(content.Description), cancellationToken);
-            row.MarkExtracted(MatchingJson.Serialize(extraction.Requirements), extraction.Model, time.GetUtcNow());
-            await repository.SaveChangesAsync(cancellationToken);
-            return ExtractionOutcome.Extracted;
+            extraction = await extractor.ExtractAsync(settings.Truncate(content.Description), cancellationToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             var final = row.RecordFailure($"{ex.GetType().Name}: {ex.Message}");
             await repository.SaveChangesAsync(cancellationToken);
             return final ? ExtractionOutcome.Failed : ExtractionOutcome.RetryLater;
         }
+
+        row.MarkExtracted(MatchingJson.Serialize(extraction.Requirements), extraction.Model, time.GetUtcNow());
+        await repository.SaveChangesAsync(cancellationToken);
+        return ExtractionOutcome.Extracted;
     }
 
     /// <summary>Scores one job for every profile, in one transaction (AC-1, AC-7, AC-17).</summary>
@@ -309,8 +312,10 @@ public sealed class JobMatchingService(
 /// <summary>Queues requirements extraction when a job's content changed (spec 0019, AC-1).</summary>
 public sealed class EnqueueRequirementExtraction(IMatchJobScheduler scheduler) : IEventHandler<JobContentChanged>
 {
+    /// <inheritdoc />
     public static string HandlerKey => "jobs.enqueue-requirement-extraction";
 
+    /// <summary>Queues a non forced extraction; the job re-reads the current content.</summary>
     public Task HandleAsync(JobContentChanged domainEvent, CancellationToken cancellationToken)
     {
         scheduler.EnqueueExtraction(domainEvent.JobId, force: false);
@@ -321,8 +326,10 @@ public sealed class EnqueueRequirementExtraction(IMatchJobScheduler scheduler) :
 /// <summary>Queues a rescore of every job when a match profile changed (spec 0019, AC-7).</summary>
 public sealed class EnqueueProfileRescore(IMatchJobScheduler scheduler) : IEventHandler<Domain.Modules.Profile.MatchProfileChanged>
 {
+    /// <inheritdoc />
     public static string HandlerKey => "jobs.enqueue-profile-rescore";
 
+    /// <summary>Queues a rescore of every job for the profile.</summary>
     public Task HandleAsync(Domain.Modules.Profile.MatchProfileChanged domainEvent, CancellationToken cancellationToken)
     {
         scheduler.EnqueueProfileRescore(domainEvent.ProfileId);

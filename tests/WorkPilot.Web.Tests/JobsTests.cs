@@ -204,6 +204,30 @@ public class JobsTests : BunitContext
         Assert.Equal([(JobId, ProfileId)], _api.Rescored);
     }
 
+    // covers: AC-10 (review finding: a failed rescore hid the panel)
+    [Fact]
+    public void A_failed_rescore_shows_its_error_beside_the_panel()
+    {
+        _api.Match = Detail();
+        _api.RescoreError = "That job no longer exists.";
+        var cut = Render<JobDetail>(p => p.Add(x => x.JobId, JobId));
+
+        cut.Find(".wp-match__summary button").Click();
+
+        Assert.Equal("That job no longer exists.", cut.Find("[role=alert]").TextContent);
+        Assert.Equal("87", cut.Find(".wp-match__big-score").TextContent);
+    }
+
+    [Fact]
+    public void A_posting_url_that_is_not_http_is_not_linked()
+    {
+        _api.Match = Detail() with { JobUrl = "javascript:alert(1)" };
+
+        var cut = Render<JobDetail>(p => p.Add(x => x.JobId, JobId));
+
+        Assert.Empty(cut.FindAll("a[target=_blank]"));
+    }
+
     // covers: AC-15
     [Fact]
     public void A_job_with_no_match_shows_the_message_and_offers_a_rescore()
@@ -220,6 +244,7 @@ public class JobsTests : BunitContext
         public string? ListError { get; set; }
         public JobMatchDetailDto? Match { get; set; }
         public bool Queued { get; set; } = true;
+        public string? RescoreError { get; set; }
         public List<(Guid ProfileId, int Page)> Listed { get; } = [];
         public List<(Guid JobId, Guid ProfileId)> Rescored { get; } = [];
 
@@ -235,7 +260,9 @@ public class JobsTests : BunitContext
         public Task<ApiResult<RescoreMatchResponse>> RescoreAsync(Guid jobId, Guid profileId, CancellationToken cancellationToken = default)
         {
             Rescored.Add((jobId, profileId));
-            return Task.FromResult(ApiResult<RescoreMatchResponse>.Ok(new RescoreMatchResponse(Queued)));
+            return Task.FromResult(RescoreError is null
+                ? ApiResult<RescoreMatchResponse>.Ok(new RescoreMatchResponse(Queued))
+                : ApiResult<RescoreMatchResponse>.Fail(RescoreError));
         }
     }
 }

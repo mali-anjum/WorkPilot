@@ -173,7 +173,7 @@ public sealed class MatchRepository(WorkPilotDbContext db) : IMatchRepository
             FROM current_content c
             LEFT JOIN app.job_requirements r ON r."JobId" = c.job_id
             WHERE r."Id" IS NULL
-               OR (r."Status" <> 'Pending' AND (r."ContentHash" IS DISTINCT FROM c.hash OR r."ExtractorVersion" < {extractorVersion}))
+               OR (r."Status" <> 'Pending' AND (r."ContentHash" IS DISTINCT FROM COALESCE(c.hash, '') OR r."ExtractorVersion" < {extractorVersion}))
                OR (r."Status" = 'Pending' AND r."PendingSince" < {pendingCutoff})
                OR (r."Status" = 'Failed' AND r."PendingSince" < {failedCutoff})
             ORDER BY c.job_id
