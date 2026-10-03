@@ -228,7 +228,7 @@ Tracer Bullet: the first slice runs one thin thread through every layer (one dim
 9. [x] `GET /internal/matches` and the `/jobs` list with paging, ordering, badges and the incomplete profile banner, satisfies **AC-9**
 10. [x] Rescore endpoint and button; extraction failure path (attempt counter, `Failed`, rules only fallback with the location parser, notice), satisfies **AC-8**, **AC-10**
 11. [x] Merge and split handling (survivor and split events, requirements cascade) and `MatchSweepJob` plus the Api start enqueue, satisfies **AC-1**, **AC-7**, **AC-14**
-12. [ ] Tests per the critical scenarios: scorer and fingerprint unit tests in the Domain tests; integration tests with `WebApplicationFactory` on the live Postgres for events, jobs, endpoints and ETag, satisfies **AC-1** to **AC-17**
+12. [x] Tests per the critical scenarios: scorer and fingerprint unit tests in the Domain tests; integration tests with `WebApplicationFactory` on the live Postgres for events, jobs, endpoints and ETag, satisfies **AC-1** to **AC-17**
 
 ## Consequences
 

@@ -44,7 +44,7 @@ Scores a canonical Job against the user's Profile (skills, experience, education
   - [x] Match profile `GET`/`PUT` with ETag, 412/428 in `Result<T>`, `MatchProfileChanged` and `RescoreProfileJob`, the hourly sweep plus the Api start enqueue (AC-7, AC-11)
   - [x] Match list, match panel and rescore endpoints, and the `/jobs`, `/jobs/{id}` and `/profile` pages with the Profile nav item (AC-9, AC-10, AC-11, AC-15)
 - [x] Verify it: `/check verify job matching engine & scoring` → [verify](../specs/0019-job-matching-engine/verify.md)
-- [ ] Test it: `/test job matching engine & scoring`
+- [x] Test it: `/test job matching engine & scoring`
 - [ ] Review it (fresh model): `/check review`
 - [ ] Document it: `/document pr`
 
