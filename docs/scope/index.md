@@ -34,7 +34,7 @@ _These are recommendations to keep the build orderly, not requirements. Skip any
 | 17 | Application pipeline & tracking | Slice 1: Job Agent core loop | planned |
 | 18 | Application execution engine (browser worker / ATS) | Slice 1: Job Agent core loop · GA | planned |
 | 19 | Activity feed & audit log | Slice 1: Job Agent core loop | done |
-| 20 | Notifications | Slice 1: Job Agent core loop | in-progress |
+| 20 | Notifications | Slice 1: Job Agent core loop | done |
 | 21 | University/program/professor/scholarship discovery | Slice 2: University Agent | planned |
 | 22 | Research matching engine | Slice 2: University Agent | planned |
 | 23 | Gmail integration (OAuth) | Slice 2: University Agent · GA | planned |

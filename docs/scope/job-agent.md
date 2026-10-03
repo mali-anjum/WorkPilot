@@ -103,7 +103,7 @@ The highest risk feature in the product. Browser worker (Playwright class toolin
 - [x] Verify it: `/check verify activity feed & audit log` → [verify.md](../specs/0011-activity-feed-audit-log/verify.md)
 - [x] Test it: `/test activity feed & audit log` (`AuditCategoriesTests`, `ActivitySummariesTests`, `ActivityTests`, `ActivityFeedTests`, `AdvanceRunJobTests`)
 
-### 20. Notifications · in-progress
+### 20. Notifications · done
 Approval required, application submitted/failed, reply received, interview upcoming, deadline approaching, workflow failed, integration expired; priority levels (Info/Success/Warning/Action Required/Error).
 **Done when:** at least the approval-required and application-outcome notifications fire in real time off real events.
 - [x] Design it (spec): `/architect notifications` → [0020](../specs/0020-notifications/index.md)
