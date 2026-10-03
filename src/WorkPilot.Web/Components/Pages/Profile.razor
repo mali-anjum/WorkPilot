@@ -1,0 +1,284 @@
+@page "/profile"
+@using WorkPilot.Application.Modules.Profile.MatchProfile
+@using WorkPilot.Web.Features.Profile
+@inject IMatchProfileApiClient ProfileApi
+
+<HeadContent><link rel="stylesheet" href="css/matching.css" /></HeadContent>
+<PageTitle>Profile</PageTitle>
+
+<PageHeader Title="Profile" Description="What jobs are scored against: your preferences, skills, experience and education. Saving rescores every job." />
+
+@if (_error is not null)
+{
+    <p class="wp-match__error" role="alert">@_error</p>
+}
+
+@if (_stale)
+{
+    <p class="wp-match__banner" role="alert">
+        Your profile changed elsewhere, so this save was not applied. Your edits are still on screen;
+        copy what you need, then <Button Variant="ButtonVariant.Secondary" Size="ButtonSize.Sm" OnClick="ReloadAsync">reload</Button>.
+    </p>
+}
+
+@if (_message is not null)
+{
+    <p class="wp-match__message" role="status">@_message</p>
+}
+
+@if (_loaded)
+{
+    <form class="wp-match__form" @onsubmit="SaveAsync">
+        <Card Title="Match preferences">
+            <label>Target roles (one per line, up to 20)
+                <textarea @bind="_targetRoles" rows="3"></textarea>
+            </label>
+            <label>Work arrangement
+                <select @bind="_remotePreference">
+                    @foreach (var option in RemoteOptions)
+                    {
+                        <option value="@option">@option</option>
+                    }
+                </select>
+            </label>
+            <label>Preferred locations (one per line: <code>Berlin, DE</code> or just <code>DE</code>)
+                <textarea @bind="_preferredLocations" rows="3"></textarea>
+            </label>
+            <fieldset class="wp-match__checks">
+                <legend>Job types</legend>
+                @foreach (var type in JobTypeOptions)
+                {
+                    <label class="wp-match__check">
+                        <input type="checkbox" checked="@_jobTypes.Contains(type)" @onchange="e => ToggleJobType(type, (bool)e.Value!)" /> @type
+                    </label>
+                }
+            </fieldset>
+            <div class="wp-match__inline">
+                <label>Minimum yearly salary <input type="number" min="0" step="1000" @bind="_minSalary" /></label>
+                <label>Currency (ISO code) <input maxlength="3" @bind="_salaryCurrency" placeholder="USD" /></label>
+            </div>
+            <label>Countries you may work in (ISO codes, comma separated)
+                <input @bind="_authorizedCountries" placeholder="PK, AE" />
+            </label>
+            <label class="wp-match__check">
+                <input type="checkbox" @bind="_needsSponsorship" /> I need visa sponsorship to work elsewhere
+            </label>
+            <label>Strong match threshold (0 to 100)
+                <input type="number" min="0" max="100" @bind="_threshold" />
+            </label>
+        </Card>
+
+        <Card Title="Skills">
+            <label>Skills (comma separated)
+                <textarea @bind="_skills" rows="3"></textarea>
+            </label>
+        </Card>
+
+        <Card Title="Experience">
+            @foreach (var row in _experiences)
+            {
+                <div class="wp-match__row-form">
+                    <label>Title <input @bind="row.Title" /></label>
+                    <label>Company <input @bind="row.Company" /></label>
+                    <label>Start <input type="date" @bind="row.StartDate" /></label>
+                    <label>End (empty if current) <input type="date" @bind="row.EndDate" /></label>
+                    <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Sm" OnClick="() => _experiences.Remove(row)">Remove</Button>
+                </div>
+            }
+            <Button Variant="ButtonVariant.Secondary" Size="ButtonSize.Sm" OnClick="() => _experiences.Add(new ExperienceRow())">Add experience</Button>
+        </Card>
+
+        <Card Title="Education">
+            @foreach (var row in _educations)
+            {
+                <div class="wp-match__row-form">
+                    <label>Institution <input @bind="row.Institution" /></label>
+                    <label>Degree <input @bind="row.Degree" placeholder="BS" /></label>
+                    <label>Field <input @bind="row.Field" /></label>
+                    <label>Level
+                        <select @bind="row.DegreeLevel">
+                            @foreach (var level in DegreeLevels)
+                            {
+                                <option value="@level">@level</option>
+                            }
+                        </select>
+                    </label>
+                    <label>Start <input type="date" @bind="row.StartDate" /></label>
+                    <label>End <input type="date" @bind="row.EndDate" /></label>
+                    <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Sm" OnClick="() => _educations.Remove(row)">Remove</Button>
+                </div>
+            }
+            <Button Variant="ButtonVariant.Secondary" Size="ButtonSize.Sm" OnClick="() => _educations.Add(new EducationRow())">Add education</Button>
+        </Card>
+
+        <Button Type="submit" Disabled="_busy">Save profile</Button>
+    </form>
+}
+else if (_error is null)
+{
+    <p class="wp-match__muted">Loading…</p>
+}
+
+@code {
+    private static readonly string[] RemoteOptions = ["Any", "Remote", "Hybrid", "Onsite"];
+    private static readonly string[] JobTypeOptions = ["FullTime", "PartTime", "Contract", "Internship", "Temporary"];
+    private static readonly string[] DegreeLevels = ["None", "Associate", "Bachelor", "Master", "Doctorate"];
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private Guid _profileId;
+    private string _etag = string.Empty;
+    private bool _loaded;
+    private bool _busy;
+    private bool _stale;
+    private string? _error;
+    private string? _message;
+
+    private string _targetRoles = string.Empty;
+    private string _remotePreference = "Any";
+    private string _preferredLocations = string.Empty;
+    private HashSet<string> _jobTypes = [];
+    private decimal? _minSalary;
+    private string? _salaryCurrency;
+    private string _authorizedCountries = string.Empty;
+    private bool _needsSponsorship = true;
+    private int _threshold = 70;
+    private string _skills = string.Empty;
+    private List<ExperienceRow> _experiences = [];
+    private List<EducationRow> _educations = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is null || ProfileWebExtensions.ProfileId((await AuthState).User) is not { } profileId)
+        {
+            _error = "Your session has no profile; sign in again.";
+            return;
+        }
+
+        _profileId = profileId;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        var result = await ProfileApi.GetAsync(_profileId);
+        if (!result.Succeeded)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        Fill(result.Value!);
+        _stale = false;
+        _error = null;
+        _message = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _message = null;
+        _error = null;
+        try
+        {
+            var result = await ProfileApi.SaveAsync(_profileId, _etag, ToDocument());
+            if (result.Succeeded)
+            {
+                Fill(result.Saved!);
+                _stale = false;
+                _message = "Saved. Every job is being rescored against your profile.";
+                return;
+            }
+
+            // A stale save keeps every edit on screen (AC-11); other failures show the field errors.
+            _stale = result.Stale;
+            _error = result.Stale ? null : result.Error;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void Fill(VersionedMatchProfile versioned)
+    {
+        var d = versioned.Document;
+        _etag = versioned.ETag;
+        _targetRoles = string.Join("\n", d.TargetRoles);
+        _remotePreference = d.RemotePreference;
+        _preferredLocations = string.Join("\n", d.PreferredLocations.Select(l => l.City is null ? l.Country : $"{l.City}, {l.Country}"));
+        _jobTypes = d.JobTypes.ToHashSet();
+        _minSalary = d.MinSalary;
+        _salaryCurrency = d.SalaryCurrency;
+        _authorizedCountries = string.Join(", ", d.AuthorizedCountries);
+        _needsSponsorship = d.NeedsSponsorshipElsewhere;
+        _threshold = d.StrongMatchThreshold;
+        _skills = string.Join(", ", d.Skills);
+        _experiences = d.Experiences.Select(e => new ExperienceRow { Id = e.Id, Company = e.Company, Title = e.Title, StartDate = e.StartDate, EndDate = e.EndDate, Description = e.Description }).ToList();
+        _educations = d.Educations.Select(e => new EducationRow { Id = e.Id, Institution = e.Institution, Degree = e.Degree, Field = e.Field, DegreeLevel = e.DegreeLevel, StartDate = e.StartDate, EndDate = e.EndDate }).ToList();
+        _loaded = true;
+    }
+
+    private MatchProfileDocument ToDocument() => new(
+        Lines(_targetRoles),
+        _remotePreference,
+        Lines(_preferredLocations).Select(ParseLocation).ToList(),
+        _jobTypes.ToList(),
+        _minSalary,
+        string.IsNullOrWhiteSpace(_salaryCurrency) ? null : _salaryCurrency.Trim(),
+        Split(_authorizedCountries),
+        _needsSponsorship,
+        _threshold,
+        Split(_skills),
+        _experiences.Select(e => new ExperienceDto(e.Id, e.Company, e.Title, e.StartDate, e.EndDate, e.Description)).ToList(),
+        _educations.Select(e => new EducationDto(e.Id, e.Institution, e.Degree, e.Field, e.DegreeLevel, e.StartDate, e.EndDate)).ToList());
+
+    private void ToggleJobType(string type, bool on)
+    {
+        if (on)
+        {
+            _jobTypes.Add(type);
+        }
+        else
+        {
+            _jobTypes.Remove(type);
+        }
+    }
+
+    // "Berlin, DE" is a city in a country; a single part is a country.
+    private static PreferredLocationDto ParseLocation(string line)
+    {
+        var comma = line.LastIndexOf(',');
+        return comma < 0
+            ? new PreferredLocationDto(null, line.Trim())
+            : new PreferredLocationDto(line[..comma].Trim(), line[(comma + 1)..].Trim());
+    }
+
+    private static List<string> Lines(string text) =>
+        text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    private static List<string> Split(string text) =>
+        text.Split([',', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    private sealed class ExperienceRow
+    {
+        public Guid? Id { get; init; }
+        public string Company { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public DateOnly StartDate { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
+        public DateOnly? EndDate { get; set; }
+        public string? Description { get; set; }
+    }
+
+    private sealed class EducationRow
+    {
+        public Guid? Id { get; init; }
+        public string Institution { get; set; } = string.Empty;
+        public string Degree { get; set; } = string.Empty;
+        public string Field { get; set; } = string.Empty;
+        public string DegreeLevel { get; set; } = "Bachelor";
+        public DateOnly StartDate { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
+        public DateOnly? EndDate { get; set; }
+    }
+}

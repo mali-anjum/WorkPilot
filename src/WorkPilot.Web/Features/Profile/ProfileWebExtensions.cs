@@ -3,12 +3,14 @@ using WorkPilot.Web.Client;
 
 namespace WorkPilot.Web.Features.Profile;
 
-/// <summary>Web host wiring for the Profile module: resume management (spec 0009).</summary>
+/// <summary>Web host wiring for the Profile module: resume management (spec 0009) and the match profile (spec 0019).</summary>
 public static class ProfileWebExtensions
 {
-    /// <summary>Registers the typed resume Api client the pages use.</summary>
+    /// <summary>Registers the typed resume and match profile Api clients the pages use.</summary>
     public static IServiceCollection AddProfileWeb(this IServiceCollection services) =>
-        services.AddScoped<IResumesApiClient, ResumesApiClient>();
+        services
+            .AddScoped<IResumesApiClient, ResumesApiClient>()
+            .AddScoped<IMatchProfileApiClient, MatchProfileApiClient>();
 
     /// <summary>
     /// Maps <c>GET /resumes/versions/{versionId}/file</c>: streams a version's stored file from the
