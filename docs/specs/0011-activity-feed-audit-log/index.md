@@ -41,7 +41,7 @@ The context, the options weighed and the reasoning live in [rationale.md](ration
 - Migration `AddActivityFeed`: column, indexes, and the backfill `UPDATE` fenced `// HAND WRITTEN (spec 0011): keep when regenerating`.
 
 **Category rule** (`WorkPilot.Domain/Modules/Audit/AuditCategories.cs`, first match wins; the backfill SQL mirrors it):
-1. `Errors`: action is `PlanningFailed` or `ApprovalGateRefused`, or ends with `Failed`.
+1. `Errors`: action is `PlanningFailed` or `ApprovalGateRefused`, or ends with `Failed`, or the writer marks it failed (a tool call that failed or failed verification; its action is the tool's own name). The backfill finds old failed tool calls by their payload, the `{"error": ...}` object `AdvanceRunJob` writes. Decided by you during the build, 2026-10-03.
 2. By target type: `Job`, `JobSource`, `JobMatch` → `Jobs`; `AgentRun`, `AgentStep`, `Approval` → `Agent`; `OutreachMessage`, `EmailThread`, `OutreachContact` → `Email`; `CalendarEvent` → `Calendar`.
 3. Actor is `Agent` → `Agent`.
 4. Otherwise `System`.

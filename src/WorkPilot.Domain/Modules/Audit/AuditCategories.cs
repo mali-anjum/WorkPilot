@@ -41,12 +41,13 @@ public static class AuditCategories
     };
 
     /// <summary>
-    /// 1. <see cref="ActivityCategory.Errors"/> for a failure action; 2. by target type; 3.
+    /// 1. <see cref="ActivityCategory.Errors"/> for a failure action, or when the caller says the action
+    /// failed (a tool call whose action is the tool's own name); 2. by target type; 3.
     /// <see cref="ActivityCategory.Agent"/> when the Agent acted; 4. <see cref="ActivityCategory.System"/>.
     /// </summary>
-    public static ActivityCategory For(string actor, string action, string targetType)
+    public static ActivityCategory For(string actor, string action, string targetType, bool failed = false)
     {
-        if (ErrorActions.Contains(action) || action.EndsWith("Failed", StringComparison.Ordinal))
+        if (failed || ErrorActions.Contains(action) || action.EndsWith("Failed", StringComparison.Ordinal))
         {
             return ActivityCategory.Errors;
         }

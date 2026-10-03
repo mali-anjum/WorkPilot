@@ -25,10 +25,14 @@ public partial class AddActivityFeed : Migration
             defaultValue: "System");
 
         // HAND WRITTEN (spec 0011): keep when regenerating. Backfills every existing row with
-        // the same first match wins rules as AuditCategories.For; change both together.
+        // the same first match wins rules as AuditCategories.For; change both together. Old rows
+        // carry no failed flag, so a failed tool call is found by its payload: AdvanceRunJob
+        // wraps a tool's error as the object {"error": ...} and nothing else.
         migrationBuilder.Sql("""
             UPDATE app.audit_logs SET "Category" = CASE
                 WHEN "Action" IN ('PlanningFailed', 'ApprovalGateRefused') OR "Action" LIKE '%Failed' THEN 'Errors'
+                WHEN "Actor" = 'Agent' AND jsonb_typeof("Payload") = 'object' AND "Payload" ? 'error'
+                    AND (SELECT count(*) FROM jsonb_object_keys("Payload")) = 1 THEN 'Errors'
                 WHEN "TargetType" IN ('Job', 'JobSource', 'JobMatch') THEN 'Jobs'
                 WHEN "TargetType" IN ('AgentRun', 'AgentStep', 'Approval') THEN 'Agent'
                 WHEN "TargetType" IN ('OutreachMessage', 'EmailThread', 'OutreachContact') THEN 'Email'

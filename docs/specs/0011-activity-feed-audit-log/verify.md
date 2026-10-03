@@ -23,6 +23,7 @@ _Self check during `/develop` (2026-10-03, not a verify run): migration applied 
 ## Commands
 - [ ] `q 'select count(*) from app.audit_logs where "Category" is null or "Category" = '"''"`'` → `0` → AC-3
 - [ ] Backfill parity: for each distinct (`Actor` is `Agent` or not, `Action`, `TargetType`) in `audit_logs`, the stored `Category` equals `AuditCategories.For` → AC-3
+- [ ] A failed tool call (an Agent row whose payload is `{"error": ...}`) has `Category` = `Errors`, both backfilled and newly written → AC-3
 - [ ] Trigger a new audited action (an ingestion via `POST /internal/jobs/ingestions`, or an approval decision) → its new row has the category the rule gives (`Jobs`, `Agent`) → AC-3
 - [ ] `curl "$A?take=3"`, then the same with `before`/`beforeId` from `nextBefore`/`nextBeforeId` → no overlap, strictly older; insert a row between the two calls → the second page is unchanged → AC-1, Key invariants
 - [ ] `curl "$A?category=nope"`, `"$A?category=3"`, `"$A?before=2026-10-01T00:00:00Z"`, `"$A?take=0"`, `"$A?take=101"` → each a 400 ProblemDetails naming the field → AC-2, AC-7

@@ -177,7 +177,7 @@ public sealed class AdvanceRunJob(
         // null, fine for jsonb), but Error is plain human-readable text, so
         // it has to be wrapped as JSON before it can land in that column.
         var payload = result.OutputJson ?? (result.Error is null ? null : JsonSerializer.Serialize(new { error = result.Error }));
-        audit.Record("Agent", tool.Name, tool.TargetType ?? ApprovalTargets.AgentStep, result.TargetId ?? next.Id, payload);
+        audit.Record("Agent", tool.Name, tool.TargetType ?? ApprovalTargets.AgentStep, result.TargetId ?? next.Id, payload, failed: !verified);
         // The outcome is committed on its own, before any status change: these
         // are inserts only (no concurrency token), so a conflict on the status
         // save below can never erase the record that the tool really ran.
