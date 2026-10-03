@@ -128,6 +128,19 @@ public class NotificationBellTests : BunitContext
         Assert.Equal(calls, _api.CountCalls);
     }
 
+    // covers: AC-9
+    [Fact]
+    public void An_unexpected_error_on_one_tick_does_not_stop_polling()
+    {
+        _api.Counts.Enqueue(1);
+        _api.CountFailures.Enqueue(new InvalidOperationException("boom"));
+        _api.Counts.Enqueue(6);
+
+        var cut = RenderBell(TimeSpan.FromMilliseconds(30));
+
+        cut.WaitForAssertion(() => Assert.Equal("6", Count(cut)), TimeSpan.FromSeconds(5));
+    }
+
     // covers: AC-4
     [Fact]
     public void Opening_the_drawer_shows_the_latest_10_with_unread_highlighted()
@@ -375,6 +388,36 @@ public class NotificationsPageTests : BunitContext
 
         cut.WaitForAssertion(() => Assert.Equal(["Keep"], cut.FindAll(".wp-notes__title").Select(t => t.TextContent)));
         Assert.Equal([drop.Id], _api.DismissCalls);
+    }
+
+    // covers: AC-5
+    [Fact]
+    public void Dismissing_the_last_row_of_a_page_loads_the_rows_left()
+    {
+        var last = NotificationBellTests.Note("Last on page 2");
+        _api.Pages.Enqueue(PageOf(26, 2, last));
+        var cut = RenderAt("/notifications?page=2");
+
+        cut.Find("button[aria-label='Dismiss Last on page 2']").Click();
+
+        cut.WaitForAssertion(() => Assert.EndsWith("/notifications", Services.GetRequiredService<NavigationManager>().Uri));
+    }
+
+    // Leaving the page while an action is in flight must not throw into the circuit.
+    [Fact]
+    public async Task Leaving_the_page_mid_action_does_not_throw()
+    {
+        var note = NotificationBellTests.Note("Slow");
+        _api.Pages.Enqueue(PageOf(1, 1, note));
+        _api.HoldDismiss = new TaskCompletionSource();
+        var cut = RenderAt("/notifications");
+        cut.Find("button[aria-label='Dismiss Slow']").Click();
+
+        await DisposeComponentsAsync();
+        _api.HoldDismiss.SetResult();
+        await Task.Delay(50);
+
+        Assert.Equal([note.Id], _api.DismissCalls);
     }
 
     // covers: AC-5
@@ -633,9 +676,18 @@ internal sealed class FakeNotificationsApiClient : INotificationsApiClient
         return Task.FromResult(ApiResult<MarkAllNotificationsReadResponse>.Ok(new MarkAllNotificationsReadResponse(2)));
     }
 
-    public Task<ApiResult<bool>> DismissAsync(Guid profileId, Guid notificationId, CancellationToken cancellationToken = default)
+    /// <summary>When set, dismiss waits for it and then honors the caller's token, like a real request.</summary>
+    public TaskCompletionSource? HoldDismiss { get; set; }
+
+    public async Task<ApiResult<bool>> DismissAsync(Guid profileId, Guid notificationId, CancellationToken cancellationToken = default)
     {
         DismissCalls.Add(notificationId);
-        return Task.FromResult(DismissErrors.TryDequeue(out var error) ? ApiResult<bool>.Fail(error) : ApiResult<bool>.Ok(true));
+        if (HoldDismiss is { } hold)
+        {
+            await hold.Task;
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
+        return DismissErrors.TryDequeue(out var error) ? ApiResult<bool>.Fail(error) : ApiResult<bool>.Ok(true);
     }
 }

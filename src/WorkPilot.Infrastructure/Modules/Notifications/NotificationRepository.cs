@@ -52,6 +52,10 @@ public sealed class NotificationRepository(WorkPilotDbContext db) : INotificatio
             .FirstOrDefaultAsync(cancellationToken);
 
     /// <inheritdoc />
+    public Task<bool> HasOtherOpenDigestAsync(Guid profileId, string groupKey, Guid exceptId, CancellationToken cancellationToken) =>
+        db.Notifications.AnyAsync(n => n.ProfileId == profileId && n.GroupKey == groupKey && n.ReadAt == null && n.Id != exceptId, cancellationToken);
+
+    /// <inheritdoc />
     public Task<Notification?> FindAsync(Guid profileId, Guid notificationId, CancellationToken cancellationToken) =>
         db.Notifications.FirstOrDefaultAsync(n => n.Id == notificationId && n.ProfileId == profileId, cancellationToken);
 

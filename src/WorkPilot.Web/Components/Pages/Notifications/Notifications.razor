@@ -116,6 +116,9 @@ else
     private readonly List<NotificationDto> _items = [];
     private readonly HashSet<Guid> _busy = [];
     private CancellationTokenSource _cts = new();
+
+    // Actions (read, dismiss, mark all) outlive a page or toggle change; only leaving the page cancels them.
+    private readonly CancellationTokenSource _lifetime = new();
     private Guid? _profileId;
     private (int Page, bool UnreadOnly)? _loaded;
     private int _total;
@@ -226,7 +229,7 @@ else
         _actionError = null;
         try
         {
-            var result = await NotificationsApi.SetReadAsync(profileId, item.Id, read, _cts.Token);
+            var result = await NotificationsApi.SetReadAsync(profileId, item.Id, read, _lifetime.Token);
             if (result.Succeeded)
             {
                 var updated = result.Value!;
@@ -234,6 +237,7 @@ else
                 {
                     _items.RemoveAll(i => i.Id == updated.Id);
                     _total = Math.Max(0, _total - 1);
+                    await RefillIfEmptyAsync();
                 }
                 else
                 {
@@ -248,6 +252,10 @@ else
         catch (HttpRequestException)
         {
             _actionError = "Notifications could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            // The page was left mid request.
         }
         finally
         {
@@ -265,11 +273,12 @@ else
         _actionError = null;
         try
         {
-            var result = await NotificationsApi.DismissAsync(profileId, item.Id, _cts.Token);
+            var result = await NotificationsApi.DismissAsync(profileId, item.Id, _lifetime.Token);
             if (result.Succeeded)
             {
                 _items.RemoveAll(i => i.Id == item.Id);
                 _total = Math.Max(0, _total - 1);
+                await RefillIfEmptyAsync();
             }
             else
             {
@@ -279,6 +288,10 @@ else
         catch (HttpRequestException)
         {
             _actionError = "Notifications could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            // The page was left mid request.
         }
         finally
         {
@@ -297,7 +310,7 @@ else
         _actionError = null;
         try
         {
-            var result = await NotificationsApi.MarkAllReadAsync(profileId, _cts.Token);
+            var result = await NotificationsApi.MarkAllReadAsync(profileId, _lifetime.Token);
             if (result.Succeeded)
             {
                 await LoadAsync();
@@ -311,9 +324,32 @@ else
         {
             _actionError = "Notifications could not be reached. Try again in a moment.";
         }
+        catch (OperationCanceledException)
+        {
+            // The page was left mid request.
+        }
         finally
         {
             _markingAll = false;
+        }
+    }
+
+    // The last row of a page went away: show the rows that are left, on this page or the last one.
+    private async Task RefillIfEmptyAsync()
+    {
+        if (_items.Count > 0 || _total == 0)
+        {
+            return;
+        }
+
+        var page = Math.Min(CurrentPage, TotalPages);
+        if (page == CurrentPage)
+        {
+            await LoadAsync();
+        }
+        else
+        {
+            Navigation.NavigateTo(NotificationDisplay.PageHref(page, UnreadOnly));
         }
     }
 
@@ -335,9 +371,10 @@ else
         return _cts.Token;
     }
 
+    // Cancel only: a handler still awaiting may read a token after this, which a disposed source would throw on.
     public void Dispose()
     {
         _cts.Cancel();
-        _cts.Dispose();
+        _lifetime.Cancel();
     }
 }

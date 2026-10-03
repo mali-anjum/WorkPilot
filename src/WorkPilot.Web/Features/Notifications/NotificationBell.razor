@@ -128,7 +128,14 @@
         {
             while (await timer.WaitForNextTickAsync(token))
             {
-                await InvokeAsync(RefreshCountAsync);
+                try
+                {
+                    await InvokeAsync(RefreshCountAsync);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException and not ObjectDisposedException)
+                {
+                    // One bad tick must not stop the polling; the next tick tries again (AC-9).
+                }
             }
         }
         catch (OperationCanceledException)
@@ -158,11 +165,12 @@
                 StateHasChanged();
             }
         }
-        catch (HttpRequestException)
-        {
-        }
         catch (OperationCanceledException)
         {
+        }
+        catch (Exception)
+        {
+            // Unreachable Api, a bad answer, anything: the bell is a hint, so it keeps its count.
         }
     }
 
@@ -260,6 +268,10 @@
             catch (HttpRequestException)
             {
             }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
         }
 
         _open = false;
@@ -299,6 +311,10 @@
         {
             _actionError = "Notifications could not be reached. Try again in a moment.";
         }
+        catch (OperationCanceledException)
+        {
+            // The circuit closed mid request.
+        }
         finally
         {
             _markingAll = false;
@@ -317,8 +333,8 @@
     public void Dispose()
     {
         Navigation.LocationChanged -= OnLocationChanged;
+        // Cancel only: a handler still awaiting may read the token after this, which a disposed source would throw on.
         _cts.Cancel();
         _timer?.Dispose();
-        _cts.Dispose();
     }
 }

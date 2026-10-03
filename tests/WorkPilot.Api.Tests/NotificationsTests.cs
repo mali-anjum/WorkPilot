@@ -302,6 +302,7 @@ public class NotificationsTests(SharedApiFactory factory) : IAsyncLifetime
     // covers: AC-5
     [Theory]
     [InlineData("page=0", "page")]
+    [InlineData("page=100001", "page")]
     [InlineData("pageSize=0", "pageSize")]
     [InlineData("pageSize=51", "pageSize")]
     public async Task Bad_paging_is_a_400_problem_naming_the_field(string query, string field)
@@ -348,6 +349,45 @@ public class NotificationsTests(SharedApiFactory factory) : IAsyncLifetime
         Assert.NotNull(readDto!.ReadAt);
         Assert.Equal(id, readDto.Id);
         Assert.Null(unreadDto!.ReadAt);
+    }
+
+    // Key invariant: at most one open digest per (profile, day), so reopening an older one is refused.
+    [Fact]
+    public async Task Marking_a_read_digest_unread_while_a_newer_one_is_open_is_a_409()
+    {
+        var profileId = await SeedProfileAsync();
+        var jobs = await SeedJobsAsync(2);
+        await DeliverAsync(new JobMatched(jobs[0].Id, profileId, 90), NotifyOnJobMatched.HandlerKey);
+        await using (var db = CreateDbContext())
+        {
+            await db.Notifications.Where(n => n.ProfileId == profileId).ExecuteUpdateAsync(s => s.SetProperty(n => n.ReadAt, DateTimeOffset.UtcNow));
+        }
+
+        await DeliverAsync(new JobMatched(jobs[1].Id, profileId, 80), NotifyOnJobMatched.HandlerKey);
+        var older = (await NotificationsOfAsync(profileId)).Single(n => n.ReadAt is not null);
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync($"/internal/notifications/{older.Id}/read", new MarkNotificationReadRequest(profileId, false));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        Assert.NotNull((await NotificationsOfAsync(profileId)).Single(n => n.Id == older.Id).ReadAt);
+    }
+
+    [Fact]
+    public async Task A_read_digest_with_no_newer_one_can_be_marked_unread()
+    {
+        var profileId = await SeedProfileAsync();
+        var job = (await SeedJobsAsync(1))[0];
+        await DeliverAsync(new JobMatched(job.Id, profileId, 90), NotifyOnJobMatched.HandlerKey);
+        var digest = Assert.Single(await NotificationsOfAsync(profileId));
+        using var client = factory.CreateClient();
+        await client.PostAsJsonAsync($"/internal/notifications/{digest.Id}/read", new MarkNotificationReadRequest(profileId, true));
+
+        var response = await client.PostAsJsonAsync($"/internal/notifications/{digest.Id}/read", new MarkNotificationReadRequest(profileId, false));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Null((await response.Content.ReadFromJsonAsync<NotificationDto>())!.ReadAt);
     }
 
     // covers: AC-4, AC-5

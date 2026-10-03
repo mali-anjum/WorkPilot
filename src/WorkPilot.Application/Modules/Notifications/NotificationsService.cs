@@ -16,12 +16,15 @@ public sealed class NotificationsService(INotificationRepository notifications, 
     /// <summary>The largest page size allowed.</summary>
     public const int MaxPageSize = 50;
 
+    /// <summary>The largest page number allowed, so the row offset always fits.</summary>
+    public const int MaxPage = 100_000;
+
     /// <summary>One page, newest first; Invalid for a page below 1 or a page size outside 1 to <see cref="MaxPageSize"/>.</summary>
     public async Task<Result<NotificationPageDto>> GetPageAsync(Guid profileId, bool unreadOnly, int page, int pageSize, CancellationToken cancellationToken)
     {
-        if (page < 1)
+        if (page is < 1 or > MaxPage)
         {
-            return Result<NotificationPageDto>.Invalid("page", "page must be 1 or more.");
+            return Result<NotificationPageDto>.Invalid("page", $"page must be 1 to {MaxPage}.");
         }
 
         if (pageSize is < 1 or > MaxPageSize)
@@ -36,7 +39,11 @@ public sealed class NotificationsService(INotificationRepository notifications, 
     public async Task<UnreadCountDto> CountUnreadAsync(Guid profileId, CancellationToken cancellationToken) =>
         new(await notifications.CountUnreadAsync(profileId, cancellationToken));
 
-    /// <summary>Marks one notification read or unread; NotFound when it is missing, dismissed or someone else's.</summary>
+    /// <summary>
+    /// Marks one notification read or unread; NotFound when it is missing, dismissed or someone else's.
+    /// Conflict when marking a digest unread while a newer digest for the same day is open, since at
+    /// most one open digest per (profile, day) exists.
+    /// </summary>
     public async Task<Result<NotificationDto>> SetReadAsync(Guid profileId, Guid notificationId, bool read, CancellationToken cancellationToken)
     {
         if (await notifications.FindAsync(profileId, notificationId, cancellationToken) is not { } notification)
@@ -50,6 +57,12 @@ public sealed class NotificationsService(INotificationRepository notifications, 
         }
         else
         {
+            if (notification.IsRead && notification.GroupKey is { } groupKey
+                && await notifications.HasOtherOpenDigestAsync(profileId, groupKey, notification.Id, cancellationToken))
+            {
+                return Result<NotificationDto>.Conflict("A newer digest for that day is still unread. Read it first, then mark this one unread.");
+            }
+
             notification.MarkUnread();
         }
 

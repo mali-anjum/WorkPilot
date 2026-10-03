@@ -38,6 +38,9 @@ public interface INotificationRepository
     /// </summary>
     Task<Notification?> LockOpenDigestAsync(Guid profileId, string groupKey, CancellationToken cancellationToken);
 
+    /// <summary>True when the profile has an unread, non dismissed digest with <paramref name="groupKey"/> other than <paramref name="exceptId"/>.</summary>
+    Task<bool> HasOtherOpenDigestAsync(Guid profileId, string groupKey, Guid exceptId, CancellationToken cancellationToken);
+
     /// <summary>A notification of <paramref name="profileId"/>, tracked, or null when missing, dismissed or someone else's.</summary>
     Task<Notification?> FindAsync(Guid profileId, Guid notificationId, CancellationToken cancellationToken);
 
