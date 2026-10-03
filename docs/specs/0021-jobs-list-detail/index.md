@@ -8,13 +8,7 @@
 
 `/jobs` becomes the place you browse every discovered job: 25 per page, best match first, with filters for the data the catalog actually has (text, company, location, remote type, source, minimum score, posted within, salary, hide blocked jobs), all kept in the URL. You can dismiss a job you are not interested in (hidden by default, one click to undo). `/jobs/{id}` shows the job on the left (details, description, where it was seen) and the Agent's analysis on the right (the match breakdown from spec 0019). A Job sources drawer on `/jobs` lets you add a Greenhouse or Lever board and run ingestion without touching the API.
 
-## Context
-
-Spec 0008 and spec 0017 fill a shared job catalog, and spec 0019 scores each job per profile. The current `/jobs` page is an empty placeholder, and the only list endpoint (`GET /internal/jobs?jobSourceId=`) lists one source at a time with no score, no filter and no paging beyond `take`. Adding a board is possible only with a hand written `POST /internal/jobs/ingestions`, so in normal use the catalog would stay empty.
-
-The scope lists eleven filters. Only some map to stored data: title, company, location, remote type, salary (often empty), source, match score and posted date exist; experience level, job type and visa sponsorship are not `jobs` columns; spec 0019 extracts them into the `job_requirements.Requirements` document per job, and filtering on them is a follow up. Filtering on raw description text would mean scanning descriptions per request.
-
-Jobs are shared (spec 0017), scores and dismissals are per profile. The catalog can reach thousands of rows from a handful of boards, so the list must page and sort in the database. Every page is InteractiveServer (spec 0016) and reads the Api through a typed client, with failures as ProblemDetails read by `ApiResultReader` (spec 0018).
+Decision history (context, options, rationale): [rationale.md](rationale.md). Verify steps: [verify.md](verify.md).
 
 ## Requirements
 
@@ -34,31 +28,11 @@ Jobs are shared (spec 0017), scores and dismissals are per profile. The catalog 
 - **AC-7**: When your profile is incomplete (no skills or no experience, spec 0019 AC-9), a banner on `/jobs` says scores need a complete profile and links to `/profile`.
 - **AC-8**: Loading, empty (no jobs yet, with a button that opens the Job sources drawer; no jobs match the filters, with "Clear filters") and error states render; a failed dismiss shows an error and leaves the row as it was.
 
-## Options considered
-
-### Option 1: Filter on stored columns only (chosen)
-
-Ship the filters the data supports; add the rest when a column exists.
-
-**Pros**: every filter is a plain indexed or cheap predicate; no change to ingestion; nothing guesses.
-**Cons**: experience level, job type and visa filters from the scope wait for later.
-
-### Option 2: Derive more columns during ingestion
-
-Extract job type, seniority and visa wording into `Job` columns at ingestion so every scoped filter works now.
-
-**Pros**: all eleven scoped filters on day one.
-**Cons**: touches ingestion and dedup (spec 0017 hashes and snapshots), duplicates spec 0019's phrase rules in a second place, and makes this feature much larger.
-
 ## Decision
 
 **Chosen option**: Option 1: spec 0019's `GET /internal/matches` extended with filters, sort and dismissal over stored columns, a two column detail page, and a Job sources drawer on `/jobs`.
 
 **Implementation skills**: `ef-core` (`github/awesome-copilot`, `.agents/skills/ef-core/`) · `supabase-postgres-best-practices` (`supabase/agent-skills`, `.agents/skills/supabase-postgres-best-practices/`) · `csharp-xunit` (`github/awesome-copilot`, `.agents/skills/csharp-xunit/`)
-
-## Rationale
-
-The data only supports some of the scoped filters, and a filter that silently matches nothing (job type on a catalog that never stores it) is worse than no filter. Keeping the list on stored columns keeps it fast and honest, and the match score already carries seniority and visa as evidence on the detail page. Extending spec 0019's `GET /internal/matches` (as its follow up asks) keeps one list query instead of two that could disagree on ordering, and leaves spec 0008's `GET /internal/jobs` contract intact. Offset paging with page numbers fits a single user browsing a few thousand rows and makes every view linkable; keyset paging would only pay off at far larger volumes. The sources drawer is small and reuses the existing ingestion use case, and without it the list would be empty in normal use.
 
 ## Feature design
 
