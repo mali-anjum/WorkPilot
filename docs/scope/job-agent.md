@@ -94,7 +94,7 @@ The highest risk feature in the product. Browser worker (Playwright class toolin
 ### 19. Activity feed & audit log · in-progress
 `/activity` timeline of everything the Agent and user did, filterable by domain (Agent, Jobs, Email, Calendar, System, Errors).
 **Done when:** every meaningful action anywhere in the product (who, what, when, why, target, result, evidence) shows up here.
-- [x] Design it (spec): `/architect activity feed & audit log` → [0011](../specs/0011-activity-feed-audit-log.md)
+- [x] Design it (spec): `/architect activity feed & audit log` → [0011](../specs/0011-activity-feed-audit-log/index.md)
 - [x] Build it: `/develop activity feed & audit log` (code in `src/*/Modules/Audit/`, `Api/Endpoints/AuditEndpoints.cs`, `Contracts/Audit/`, `Web/Features/Audit/`, `Web/Components/{Pages/Audit,Audit}/`, `Web/Features/Common/BrowserTimeZone.cs`, migration `AddActivityFeed`)
   - [x] Category rule, `AddActivityFeed` migration with backfill, `IActivityQuery` and `GET /internal/audit/activity`, `/activity` page with Load more and nav item (AC-1, AC-3, AC-8)
   - [x] Category chips bound to the URL, 400 for bad input (AC-2)
