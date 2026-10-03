@@ -13,17 +13,18 @@ using WorkPilot.Workers.Common;
 
 namespace WorkPilot.Workers.Audit;
 
-/// <summary>The Audit module: the audit log and the domain event outbox (specs 0005, 0018).</summary>
+/// <summary>The Audit module: the audit log, its activity feed, and the domain event outbox (specs 0005, 0011, 0018).</summary>
 public static class AuditModule
 {
     /// <summary>
-    /// Registers <see cref="IAuditService"/>, <see cref="IEventPublisher"/>, the event registry,
+    /// Registers <see cref="IAuditService"/>, <see cref="IActivityQuery"/>, <see cref="IEventPublisher"/>, the event registry,
     /// the outbox jobs and their every minute sweep, and validates the <c>Outbox</c> settings.
     /// </summary>
     public static IServiceCollection AddAuditModule(this IServiceCollection services, IConfiguration configuration)
     {
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IAuditService, AuditService>();
+        services.AddScoped<IActivityQuery, ActivityQuery>();
         services.AddScoped<IEventPublisher, EventPublisher>();
         services.AddSingleton<EventRegistry>();
         services.AddSingleton<IOutboxDispatchTrigger, HangfireOutboxDispatchTrigger>();

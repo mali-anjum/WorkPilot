@@ -16,6 +16,7 @@ public sealed class AuditService(WorkPilotDbContext db) : IAuditService
             TargetType = targetType,
             TargetId = targetId,
             Payload = payload,
+            Category = AuditCategories.For(actor, action, targetType),
         });
     }
 }

@@ -32,6 +32,7 @@ public static class NavRoutes
         ]),
         new("Agent",
         [
+            new NavItem("Activity", "/activity"),
             new NavItem("Agent Runs", "/agent/runs"),
             new NavItem("Approvals", "/approvals"),
         ]),
