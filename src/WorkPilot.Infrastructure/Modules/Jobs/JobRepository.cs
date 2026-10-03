@@ -161,6 +161,17 @@ public sealed class JobRepository(WorkPilotDbContext db) : IJobRepository
     }
 
     /// <inheritdoc />
+    public async Task ReassignDismissalsAsync(Guid fromJobId, Guid toJobId, CancellationToken cancellationToken)
+    {
+        await db.JobDismissals
+            .Where(d => d.JobId == fromJobId && db.JobDismissals.Any(t => t.JobId == toJobId && t.ProfileId == d.ProfileId))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.JobDismissals
+            .Where(d => d.JobId == fromJobId)
+            .ExecuteUpdateAsync(s => s.SetProperty(d => d.JobId, toJobId), cancellationToken);
+    }
+
+    /// <inheritdoc />
     public Task SaveChangesAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
 
     // A soft deleted job still owns its links, so every lookup sees it (and can revive it).

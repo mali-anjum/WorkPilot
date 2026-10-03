@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using WorkPilot.Application.Common;
+using WorkPilot.Contracts.Jobs;
 using WorkPilot.Domain.Modules.Jobs.Matching;
 
 namespace WorkPilot.Application.Modules.Jobs.Matching;
@@ -119,8 +120,12 @@ public interface IMatchRepository
 /// <summary>The read side of matching: the list and the match panel (spec 0019, AC-9, AC-10, AC-15).</summary>
 public interface IMatchQueries
 {
-    /// <summary>One page of non deleted jobs with the profile's match, best first; 404 for an unknown profile, 400 for bad paging.</summary>
-    Task<Result<MatchListDto>> ListAsync(Guid profileId, int page, int pageSize, CancellationToken cancellationToken);
+    /// <summary>
+    /// One page of non deleted jobs with the profile's match, filtered and sorted by
+    /// <paramref name="query"/> (spec 0021, AC-1, AC-2); 404 for an unknown profile, 400 for a bad
+    /// filter or paging (see <see cref="JobSearchValidation"/>).
+    /// </summary>
+    Task<Result<MatchListDto>> ListAsync(Guid profileId, JobListQuery query, CancellationToken cancellationToken);
 
     /// <summary>The profile's match of one job; 404 when the job, the profile or that profile's match is missing.</summary>
     Task<Result<JobMatchDetailDto>> GetAsync(Guid jobId, Guid profileId, CancellationToken cancellationToken);

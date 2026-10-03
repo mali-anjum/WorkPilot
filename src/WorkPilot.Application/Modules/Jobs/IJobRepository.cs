@@ -83,6 +83,13 @@ public interface IJobRepository
     /// </summary>
     Task ReassignMatchesAsync(Guid fromJobId, Guid toJobId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Moves <paramref name="fromJobId"/>'s dismissals to <paramref name="toJobId"/>, dropping each
+    /// one whose profile already dismissed that job (spec 0021). Runs immediately, inside the
+    /// current transaction.
+    /// </summary>
+    Task ReassignDismissalsAsync(Guid fromJobId, Guid toJobId, CancellationToken cancellationToken);
+
     /// <summary>Commits everything staged (inside a transaction, only on its commit).</summary>
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

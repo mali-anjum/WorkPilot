@@ -53,29 +53,40 @@ public sealed class JobIngestionService(
 
     /// <summary>
     /// Finds or creates the <see cref="JobSource"/> row for <paramref name="board"/>
-    /// on the source named <paramref name="sourceType"/>. Returns <c>null</c> for an
-    /// unknown source type or an identifier the source rejects (AC-1). A
-    /// company name is not stored here: the ingestion run applies it (AC-7).
+    /// on the source named <paramref name="sourceType"/> (AC-1). An unknown source
+    /// type is a <c>source</c> field error and an identifier the source rejects a
+    /// <c>boardToken</c> one (spec 0021, AC-6). A company name is not stored here:
+    /// the ingestion run applies it (spec 0017, AC-7).
     /// </summary>
-    public async Task<JobSource?> RegisterSourceAsync(string sourceType, string board, CancellationToken cancellationToken)
+    public async Task<Result<JobSource>> RegisterSourceAsync(string? sourceType, string? board, CancellationToken cancellationToken)
     {
-        var source = JobSources.Resolve(sources, sourceType);
-        var definition = source?.Describe(board);
-        if (source is null || definition is null)
+        if (string.IsNullOrWhiteSpace(sourceType))
         {
-            return null;
+            return Result<JobSource>.Invalid("source", "Choose a source type.");
+        }
+
+        var source = JobSources.Resolve(sources, sourceType.Trim());
+        if (source is null)
+        {
+            return Result<JobSource>.Invalid("source", $"Unknown source type '{sourceType.Trim()}'.");
+        }
+
+        var definition = string.IsNullOrWhiteSpace(board) ? null : source.Describe(board);
+        if (definition is null)
+        {
+            return Result<JobSource>.Invalid("boardToken", $"That is not a valid {source.SourceType} board.");
         }
 
         var existing = await repository.FindSourceAsync(source.SourceType, definition.Name, cancellationToken);
         if (existing is not null)
         {
-            return existing;
+            return Result<JobSource>.Ok(existing);
         }
 
         var created = new JobSource { Type = source.SourceType, Name = definition.Name, Config = definition.ConfigJson };
         repository.AddSource(created);
         await repository.SaveChangesAsync(cancellationToken);
-        return created;
+        return Result<JobSource>.Ok(created);
     }
 
     /// <summary>
