@@ -146,8 +146,8 @@ using (var scope = app.Services.CreateScope())
     }
 
     // Job matching (docs/specs/0019-job-matching-engine): one sweep on start extracts what is
-    // missing or stale and rescores profiles after a scoring or config change.
-    scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>().Enqueue<MatchSweepJob>(j => j.RunAsync());
+    // missing or stale and rescores every profile, so a scoring or Matching config change applies.
+    scope.ServiceProvider.GetRequiredService<IBackgroundJobClient>().Enqueue<MatchSweepJob>(j => j.RunAsync(true));
 }
 
 // Configure the HTTP request pipeline.

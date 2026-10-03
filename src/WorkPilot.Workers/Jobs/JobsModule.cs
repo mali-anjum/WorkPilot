@@ -41,7 +41,7 @@ public static class JobsModule
         services.AddScoped<ExtractJobRequirementsJob>();
         services.AddScoped<RescoreProfileJob>();
         services.AddScoped<MatchSweepJob>();
-        services.AddRecurringJob<MatchSweepJob>(MatchSweepJob.RecurringJobId, Cron.Hourly(), j => j.RunAsync());
+        services.AddRecurringJob<MatchSweepJob>(MatchSweepJob.RecurringJobId, Cron.Hourly(), j => j.RunAsync(false));
         services.AddEventHandler<JobContentChanged, EnqueueRequirementExtraction>();
         services.AddEventHandler<MatchProfileChanged, EnqueueProfileRescore>();
         return services;

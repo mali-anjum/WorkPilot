@@ -154,10 +154,20 @@ public sealed class JobMatchingService(
         }
     }
 
-    /// <summary>Queues every extraction and profile rescore the sweep finds (spec 0019, <c>MatchSweepJob</c>).</summary>
-    public async Task<MatchSweepWork> SweepAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Queues every extraction and profile rescore the sweep finds (spec 0019, <c>MatchSweepJob</c>).
+    /// With <paramref name="rescoreEveryProfile"/> (the run on Api start) every profile is rescored:
+    /// a changed <c>Matching</c> config is only visible to the fingerprint check, which then rewrites
+    /// just the matches it changes (AC-7).
+    /// </summary>
+    public async Task<MatchSweepWork> SweepAsync(bool rescoreEveryProfile, CancellationToken cancellationToken)
     {
         var work = await repository.FindSweepWorkAsync(time.GetUtcNow(), cancellationToken);
+        if (rescoreEveryProfile)
+        {
+            work = work with { ProfilesToRescore = await repository.GetProfileIdsAsync(cancellationToken) };
+        }
+
         foreach (var jobId in work.JobsToExtract)
         {
             scheduler.EnqueueExtraction(jobId, force: false);

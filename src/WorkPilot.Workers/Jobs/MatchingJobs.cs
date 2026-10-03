@@ -62,19 +62,20 @@ public sealed class RescoreProfileJob(JobMatchingService matching, ILogger<Resco
 
 /// <summary>
 /// Keeps matches fresh (spec 0019): queues extraction for jobs with no, stale, lost or due failed
-/// requirements, and a rescore for profiles with old or missing matches. Hourly, and once on Api start.
+/// requirements, and a rescore for profiles with old or missing matches. Hourly, and once on Api
+/// start, when it rescores every profile so a changed <c>Matching</c> config takes effect (AC-7).
 /// </summary>
 public sealed class MatchSweepJob(JobMatchingService matching, ILogger<MatchSweepJob> logger)
 {
     /// <summary>Recurring job id.</summary>
     public const string RecurringJobId = "jobs.match-sweep";
 
-    /// <summary>Runs one sweep.</summary>
+    /// <summary>Runs one sweep; <paramref name="rescoreEveryProfile"/> on Api start.</summary>
     [DisableConcurrentExecution(timeoutInSeconds: 120)]
     [AutomaticRetry(Attempts = 0)]
-    public async Task RunAsync()
+    public async Task RunAsync(bool rescoreEveryProfile)
     {
-        var work = await matching.SweepAsync(CancellationToken.None);
+        var work = await matching.SweepAsync(rescoreEveryProfile, CancellationToken.None);
         logger.LogInformation(
             "Match sweep queued {Jobs} extractions and {Profiles} profile rescores.",
             work.JobsToExtract.Count, work.ProfilesToRescore.Count);
