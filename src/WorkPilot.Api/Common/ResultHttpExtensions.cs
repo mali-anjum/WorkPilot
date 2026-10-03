@@ -10,7 +10,8 @@ public static class ResultHttpExtensions
 {
     /// <summary>
     /// <c>Ok</c> → <paramref name="ok"/>; <c>NotFound</c> → 404; <c>Invalid</c> → 400 validation
-    /// problem; <c>Conflict</c> → 409; <c>Forbidden</c> → 403.
+    /// problem; <c>Conflict</c> → 409; <c>Forbidden</c> → 403; <c>PreconditionFailed</c> → 412;
+    /// <c>PreconditionRequired</c> → 428.
     /// </summary>
     public static IResult ToHttp<T>(this Result<T> result, Func<T, IResult> ok) => result.Status switch
     {
@@ -19,6 +20,8 @@ public static class ResultHttpExtensions
         ResultStatus.Invalid => Results.ValidationProblem(result.Errors?.ToDictionary() ?? [], detail: result.Detail),
         ResultStatus.Conflict => Results.Problem(detail: result.Detail, statusCode: StatusCodes.Status409Conflict),
         ResultStatus.Forbidden => Results.Problem(detail: result.Detail, statusCode: StatusCodes.Status403Forbidden),
+        ResultStatus.PreconditionFailed => Results.Problem(detail: result.Detail, statusCode: StatusCodes.Status412PreconditionFailed),
+        ResultStatus.PreconditionRequired => Results.Problem(detail: result.Detail, statusCode: StatusCodes.Status428PreconditionRequired),
         _ => throw new InvalidOperationException($"Unhandled result status {result.Status}."),
     };
 }

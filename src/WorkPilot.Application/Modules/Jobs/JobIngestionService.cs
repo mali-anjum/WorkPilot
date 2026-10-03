@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using WorkPilot.Application.Common;
 using WorkPilot.Application.Modules.Audit;
 using WorkPilot.Domain.Modules.Jobs;
 
@@ -36,6 +37,7 @@ public sealed class JobIngestionService(
     IJobRepository repository,
     JobMerger merger,
     IAuditService audit,
+    IEventPublisher events,
     TimeProvider time)
 {
     /// <summary>Audit action written once per completed run.</summary>
@@ -165,6 +167,12 @@ public sealed class JobIngestionService(
             .Concat(renamed.Select(r => JobSources.KeyOf(r.Posting)));
         await repository.LockDedupKeysAsync(keys, cancellationToken);
 
+        // Every job this unit may change is stamped before it changes, so the jobs whose primary
+        // content changed (or that are new) raise JobContentChanged before the save (spec 0019, AC-1).
+        var content = new JobContentEvents(events);
+        var involved = new List<Job>(renamed.Select(r => r.Job));
+        content.Stamp(involved);
+
         var merged = 0;
         if (rename)
         {
@@ -176,6 +184,9 @@ public sealed class JobIngestionService(
             var renamedJobs = renamed.Select(r => r.Job).ToList();
             foreach (var key in renamedJobs.Select(j => j.DedupKey!).Distinct().Order(StringComparer.Ordinal))
             {
+                var group = await repository.GetJobsByKeyAsync(key, cancellationToken);
+                content.Stamp(group);
+                involved.AddRange(group);
                 merged += await merger.MergeGroupAsync(key, renamedJobs, JobMerger.Reasons.Rename, cancellationToken);
             }
 
@@ -185,6 +196,8 @@ public sealed class JobIngestionService(
 
         // A competing run may have committed some of these links while this one waited on a lock.
         known = await repository.GetJobsByLinkAsync(jobSourceId, externalIds, cancellationToken);
+        content.Stamp(known.Values);
+        involved.AddRange(known.Values);
         var postingsOf = await PostingResolver.CreateAsync(repository, sources, known.Values.Distinct().ToList(), cancellationToken);
 
         var createdThisRun = new Dictionary<string, Job>(StringComparer.Ordinal);
@@ -214,6 +227,8 @@ public sealed class JobIngestionService(
             var existing = createdThisRun.GetValueOrDefault(key) ?? await FindJobToJoinAsync(key, cancellationToken);
             if (existing is not null)
             {
+                content.Stamp([existing]);
+                involved.Add(existing);
                 var sighting = existing.AttachLink(jobSourceId, posting, seenAt, source.ProvenanceConfidence);
                 repository.AddLink(sighting.Link);
                 repository.AddSnapshot(sighting.Snapshot);
@@ -225,6 +240,7 @@ public sealed class JobIngestionService(
 
             var newJob = Job.Create(jobSourceId, posting, seenAt, source.ProvenanceConfidence);
             repository.AddJob(newJob);
+            involved.Add(newJob);
             createdThisRun[key] = newJob;
             created++;
         }
@@ -234,6 +250,7 @@ public sealed class JobIngestionService(
             ReconcileNeeded = touched.Any(j => j.IsStale),
         };
         audit.Record("Agent", AuditAction, AuditTargetType, jobSourceId, JsonSerializer.Serialize(summary, AuditJson));
+        content.PublishChanges(involved);
         await repository.SaveChangesAsync(cancellationToken);
         return summary;
     }

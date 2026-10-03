@@ -1,14 +1,17 @@
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
+using WorkPilot.Api.Common;
 using WorkPilot.Application.Modules.Jobs;
+using WorkPilot.Application.Modules.Jobs.Matching;
+using WorkPilot.Infrastructure.Modules.Jobs.Matching;
 using WorkPilot.Infrastructure.Persistence;
 using WorkPilot.Workers.Jobs;
 
 namespace WorkPilot.Api.Endpoints;
 
 /// <summary>
-/// Internal job ingestion and deduplication endpoints
-/// (docs/specs/0008-job-source-ingestion, docs/specs/0017-job-deduplication).
+/// Internal job ingestion, deduplication and matching endpoints
+/// (docs/specs/0008-job-source-ingestion, docs/specs/0017-job-deduplication, docs/specs/0019-job-matching-engine).
 /// Internal only, same network boundary as the other <c>/internal/*</c> routes.
 /// </summary>
 internal static class JobsEndpoints
@@ -19,13 +22,16 @@ internal static class JobsEndpoints
     /// <inheritdoc cref="DefaultTake" />
     internal const int MaxTake = 200;
 
-    /// <summary>Maps the ingestion trigger, the list and detail reads, and the split.</summary>
+    /// <summary>Maps the ingestion trigger, the list and detail reads, the split, and the match list, panel and rescore.</summary>
     public static IEndpointRouteBuilder MapJobsEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/internal/jobs/ingestions", TriggerIngestionAsync);
         app.MapGet("/internal/jobs", ListJobsAsync);
         app.MapGet("/internal/jobs/{id:guid}", GetJobAsync);
         app.MapPost("/internal/jobs/{id:guid}/links/{linkId:guid}/split", SplitLinkAsync);
+        app.MapGet("/internal/matches", ListMatchesAsync);
+        app.MapGet("/internal/jobs/{jobId:guid}/match", GetMatchAsync);
+        app.MapPost("/internal/jobs/{jobId:guid}/match/rescore", RescoreMatchAsync);
         return app;
     }
 
@@ -160,6 +166,33 @@ internal static class JobsEndpoints
             _ => Results.NotFound(),
         };
     }
+
+    /// <summary>
+    /// The profile's jobs, best match first, 25 per page by default (spec 0019, AC-9): 400 for bad
+    /// paging or a missing <c>profileId</c>, 404 for an unknown profile.
+    /// </summary>
+    private static async Task<IResult> ListMatchesAsync(Guid? profileId, int? page, int? pageSize, IMatchQueries matches, CancellationToken cancellationToken)
+    {
+        if (profileId is not { } id || id == Guid.Empty)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["profileId"] = ["profileId is required."] });
+        }
+
+        var result = await matches.ListAsync(id, page ?? 1, pageSize ?? MatchQueries.DefaultPageSize, cancellationToken);
+        return result.ToHttp(Results.Ok);
+    }
+
+    /// <summary>The match panel for one job and profile (AC-10); 404 when there is none for this profile (AC-15).</summary>
+    private static async Task<IResult> GetMatchAsync(Guid jobId, Guid profileId, IMatchQueries matches, CancellationToken cancellationToken) =>
+        (await matches.GetAsync(jobId, profileId, cancellationToken)).ToHttp(Results.Ok);
+
+    /// <summary>
+    /// Forces a fresh extraction and rescore (AC-10): 202 with <c>queued</c> false when extraction is
+    /// already Pending; 404 for an unknown job or profile.
+    /// </summary>
+    private static async Task<IResult> RescoreMatchAsync(Guid jobId, RescoreMatchRequest request, JobMatchingService matching, CancellationToken cancellationToken) =>
+        (await matching.RequestRescoreAsync(jobId, request.ProfileId, cancellationToken))
+            .ToHttp(response => Results.Accepted(value: response));
 }
 
 /// <summary>Request body for <c>POST /internal/jobs/ingestions</c>.</summary>

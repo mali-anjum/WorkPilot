@@ -9,6 +9,7 @@ using WorkPilot.Domain.Modules.Audit;
 using WorkPilot.Domain.Modules.Calendar;
 using WorkPilot.Domain.Modules.Integrations;
 using WorkPilot.Domain.Modules.Jobs;
+using WorkPilot.Domain.Modules.Jobs.Matching;
 using WorkPilot.Domain.Modules.Notifications;
 using WorkPilot.Domain.Modules.Outreach;
 using WorkPilot.Domain.Modules.Profile;
@@ -49,6 +50,7 @@ public class WorkPilotDbContext(
     public DbSet<JobSnapshot> JobSnapshots => Set<JobSnapshot>();
     public DbSet<JobSourceLink> JobSourceLinks => Set<JobSourceLink>();
     public DbSet<JobMatch> JobMatches => Set<JobMatch>();
+    public DbSet<JobRequirement> JobRequirements => Set<JobRequirement>();
 
     // Applications
     public DbSet<JobApplication> JobApplications => Set<JobApplication>();

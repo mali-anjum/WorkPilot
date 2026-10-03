@@ -8,6 +8,7 @@ using WorkPilot.Domain.Modules.Jobs;
 using WorkPilot.Infrastructure.Modules.Agent;
 using WorkPilot.Infrastructure.Modules.Applications;
 using WorkPilot.Infrastructure.Modules.Audit;
+using WorkPilot.Infrastructure.Modules.Audit.Outbox;
 using WorkPilot.Infrastructure.Modules.Jobs;
 using WorkPilot.Infrastructure.Persistence;
 
@@ -303,7 +304,7 @@ public class JobIngestionTests(SharedApiFactory factory)
         var repository = new JobRepository(db);
         var audit = new AuditService(db);
         var merger = new JobMerger(repository, new JobApplicationReassigner(db), audit, [source]);
-        var service = new JobIngestionService([source], repository, merger, audit, new FixedTime(now));
+        var service = new JobIngestionService([source], repository, merger, audit, new EventPublisher(db, TimeProvider.System), new FixedTime(now));
         return await service.IngestAsync(sourceId, keywords, null, CancellationToken.None);
     }
 

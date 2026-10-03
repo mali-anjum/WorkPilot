@@ -1,3 +1,4 @@
+using WorkPilot.Application.Common;
 using WorkPilot.Domain.Modules.Jobs;
 
 namespace WorkPilot.Application.Modules.Jobs;
@@ -26,6 +27,7 @@ public sealed class JobDedupService(
     IEnumerable<IJobSource> sources,
     IJobRepository repository,
     JobMerger merger,
+    IEventPublisher events,
     TimeProvider time)
 {
     /// <summary>How many stale jobs one reconcile pass reads at a time.</summary>
@@ -70,12 +72,18 @@ public sealed class JobDedupService(
         var stale = (await repository.GetJobsAsync(ids, cancellationToken))
             .Where(j => j.IsStale && JobDedupKey.For(j.Company, j.Title, j.Location) == key)
             .ToList();
+        // The whole group is stamped first: a merge can give the surviving job a new primary (spec 0019, AC-1).
+        var group = (await repository.GetJobsByKeyAsync(key, cancellationToken)).Concat(stale).ToList();
+        var content = new JobContentEvents(events);
+        content.Stamp(group);
+
         foreach (var job in stale)
         {
             job.MarkCurrent();
         }
 
         var merged = await merger.MergeGroupAsync(key, stale, JobMerger.Reasons.Reconcile, cancellationToken);
+        content.PublishChanges(group);
         await repository.SaveChangesAsync(cancellationToken);
         return merged;
     }
@@ -112,10 +120,13 @@ public sealed class JobDedupService(
                 return new SplitResult(SplitOutcome.LastLink, jobId, null);
             }
 
+            // Not stamped: both halves of a split are read again (spec 0019, AC-1).
+            var content = new JobContentEvents(events);
             var postings = await PostingResolver.CreateAsync(repository, sources, [job], ct);
             var created = job.SplitLink(linkId, time.GetUtcNow(), postings.Of);
             repository.AddJob(created);
             merger.RecordSplit(job.Id, created.Id, linkId);
+            content.PublishChanges([job, created]);
             await repository.SaveChangesAsync(ct);
             return new SplitResult(SplitOutcome.Split, job.Id, created.Id);
         }, cancellationToken);

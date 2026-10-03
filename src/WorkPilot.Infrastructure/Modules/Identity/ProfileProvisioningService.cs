@@ -1,11 +1,13 @@
 using Microsoft.EntityFrameworkCore;
+using WorkPilot.Application.Common;
 using WorkPilot.Application.Modules.Identity;
+using WorkPilot.Domain.Modules.Profile;
 using WorkPilot.Infrastructure.Persistence;
 
 namespace WorkPilot.Infrastructure.Modules.Identity;
 
 /// <inheritdoc cref="IProfileProvisioningService" />
-public sealed class ProfileProvisioningService(WorkPilotDbContext db) : IProfileProvisioningService
+public sealed class ProfileProvisioningService(WorkPilotDbContext db, IEventPublisher events) : IProfileProvisioningService
 {
     public async Task<Guid> GetOrCreateProfileIdAsync(Guid authUserId, string email, CancellationToken cancellationToken)
     {
@@ -30,6 +32,9 @@ public sealed class ProfileProvisioningService(WorkPilotDbContext db) : IProfile
             Name = email.Split('@')[0],
         };
         db.Profiles.Add(profile);
+
+        // A new profile has no matches yet: Jobs scores every job for it (spec 0019).
+        events.Publish(new MatchProfileChanged(profile.Id));
         await db.SaveChangesAsync(cancellationToken);
         return profile.Id;
     }

@@ -1,7 +1,7 @@
 # 0019. Job matching engine and explainable scoring
 
 **Date**: 2026-09-30
-**Status**: Proposed
+**Status**: In Progress
 **Updated**: 2026-10-02 (merged in the 2026-09-29 draft `0019-job-matching-scoring`: title dimension, strong match threshold and the `JobMatched` event)
 
 ## Summary

@@ -1,12 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using WorkPilot.Api.Common;
+using WorkPilot.Application.Modules.Profile.MatchProfile;
 using WorkPilot.Application.Modules.Profile.Resumes;
 using WorkPilot.Domain.Modules.Profile;
 
 namespace WorkPilot.Api.Endpoints;
 
 /// <summary>
-/// The Profile module's endpoints: resume management (spec 0009). Internal only, like every other Api endpoint: the Api is
+/// The Profile module's endpoints: resume management (spec 0009) and the match profile (spec 0019). Internal only, like every other Api endpoint: the Api is
 /// never externally exposed (spec 0004), so the caller (the Web host) passes the signed in
 /// <c>profileId</c> and every call is scoped to it (AC-9).
 /// </summary>
@@ -19,9 +20,18 @@ public static class ProfileEndpoints
     /// </summary>
     public const long MaxUploadRequestBytes = ResumeRules.FileMaxBytes + (1024 * 1024);
 
-    /// <summary>Maps the <c>/internal/resumes</c> endpoints.</summary>
+    /// <summary>Maps the <c>/internal/resumes</c> and <c>/internal/profile/{profileId}/match-profile</c> endpoints.</summary>
     public static IEndpointRouteBuilder MapProfileEndpoints(this IEndpointRouteBuilder app)
     {
+        // The match profile with its ETag (spec 0019, AC-11); 404 for an unknown profile.
+        app.MapGet("/internal/profile/{profileId:guid}/match-profile", async (Guid profileId, HttpResponse response, IMatchProfileService profiles, CancellationToken ct) =>
+            (await profiles.GetAsync(profileId, ct)).ToHttp(versioned => WithETag(response, versioned)));
+
+        // Replaces the whole match profile: 428 without If-Match, 412 when it is stale, 400 with
+        // field errors (AC-11). A save raises MatchProfileChanged, so every job is rescored.
+        app.MapPut("/internal/profile/{profileId:guid}/match-profile", async (Guid profileId, [FromBody] MatchProfileDocument document, HttpRequest request, HttpResponse response, IMatchProfileService profiles, CancellationToken ct) =>
+            (await profiles.SaveAsync(profileId, request.Headers.IfMatch.ToString(), document, ct)).ToHttp(versioned => WithETag(response, versioned)));
+
         var group = app.MapGroup("/internal/resumes");
 
         // Lists the profile's resumes, most recently updated first (AC-1).
@@ -100,6 +110,12 @@ public static class ProfileEndpoints
                 : Results.NotFound());
 
         return app;
+    }
+
+    private static IResult WithETag(HttpResponse response, VersionedMatchProfile versioned)
+    {
+        response.Headers.ETag = versioned.ETag;
+        return Results.Ok(versioned.Document);
     }
 
     private static RouteHandlerBuilder WithUploadLimit(this RouteHandlerBuilder builder) =>

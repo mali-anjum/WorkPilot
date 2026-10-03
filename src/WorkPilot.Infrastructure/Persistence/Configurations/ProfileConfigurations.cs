@@ -13,6 +13,33 @@ public class ProfileConfiguration : IEntityTypeConfiguration<Profile>
         builder.HasIndex(e => e.AuthUserId).IsUnique();
         builder.Property(e => e.Name).HasMaxLength(200).IsRequired();
 
+        // Match preferences (spec 0019). Their database defaults (Any, [], true, 70) live in the
+        // AddJobMatching migration, not here: a CLR default of false or 0 must still be written.
+        builder.Property(e => e.RemotePreference).HasConversion<string>().HasMaxLength(20).IsRequired();
+        builder.OwnsMany(e => e.PreferredLocations, b =>
+        {
+            b.ToJson();
+            b.Property(l => l.City).HasMaxLength(MatchProfileRules.MaxCityLength);
+            b.Property(l => l.Country).HasMaxLength(2);
+        });
+        builder.PrimitiveCollection(e => e.JobTypes).ElementType(t => t.HasConversion<string>());
+        builder.PrimitiveCollection(e => e.AuthorizedCountries);
+        builder.Property(e => e.MinSalary).HasColumnType("numeric(12,2)");
+        builder.Property(e => e.SalaryCurrency).HasColumnType("char(3)");
+        builder.ToTable(t =>
+        {
+            t.HasCheckConstraint("ck_profiles_strong_match_threshold", "\"StrongMatchThreshold\" BETWEEN 0 AND 100");
+            t.HasCheckConstraint("ck_profiles_salary_currency", "(\"MinSalary\" IS NULL) = (\"SalaryCurrency\" IS NULL)");
+        });
+
+        // Postgres's own system column as the match profile ETag (spec 0019, AC-11): a save with a
+        // stale If-Match fails instead of overwriting another save.
+        builder.Property<uint>("xmin")
+            .HasColumnName("xmin")
+            .HasColumnType("xid")
+            .ValueGeneratedOnAddOrUpdate()
+            .IsConcurrencyToken();
+
         builder.HasMany(e => e.Experiences).WithOne().HasForeignKey(e => e.ProfileId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(e => e.Education).WithOne().HasForeignKey(e => e.ProfileId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(e => e.Skills).WithMany().UsingEntity<ProfileSkill>(
@@ -55,6 +82,7 @@ public class EducationConfiguration : IEntityTypeConfiguration<Education>
         builder.ToTable("education");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Institution).HasMaxLength(200).IsRequired();
+        builder.Property(e => e.DegreeLevel).HasConversion<string>().HasMaxLength(20).IsRequired();
     }
 }
 
