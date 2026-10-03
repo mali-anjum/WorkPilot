@@ -213,22 +213,22 @@ The PUT replaces the whole match profile in one transaction: preferences set, sk
 Tracer Bullet: the first slice runs one thin thread through every layer (one dimension, real event, real page), then later slices thicken it.
 
 **Slice 1: thin thread, skills only, one job's match visible**
-1. Migration `AddJobMatching` for the whole confirmed model (profile columns, `DegreeLevel`, `job_requirements`, `job_matches` changes and index, drop `MatchedSkills`); EF configurations; `xmin` token on `profiles`. One migration because every later slice reads the same columns and the table is still empty, satisfies **AC-2**
-2. Domain: requirements v1 document, explanation v1, `MatchScorer` with the skills dimension, renormalization, confidence, quote verification, `ScoringVersion`, inputs fingerprint; `MatchingOptions` with startup validation, satisfies **AC-2**, **AC-3**, **AC-6**, **AC-16**
-3. Application: `IJobRequirementExtractor`, `IMatchRepository`, `MatchProfileReadModel` query; Infrastructure: AI extractor on the `JobExtraction` purpose (added to `AiPurposes.All`; no tools, truncation, schema bounds) and the Fake provider's extraction answer, satisfies **AC-12**, **AC-13**
-4. `JobContentChanged` event published by the Application callers at job create and primary change; handler; `ExtractJobRequirementsJob` with the raw SQL upsert, satisfies **AC-1**, **AC-7**
-5. `GET /internal/jobs/{jobId}/match` and a `/jobs/{id}` page with the match panel, satisfies **AC-10**, **AC-15**
+1. [x] Migration `AddJobMatching` for the whole confirmed model (profile columns, `DegreeLevel`, `job_requirements`, `job_matches` changes and index, drop `MatchedSkills`); EF configurations; `xmin` token on `profiles`. One migration because every later slice reads the same columns and the table is still empty, satisfies **AC-2**
+2. [x] Domain: requirements v1 document, explanation v1, `MatchScorer` with the skills dimension, renormalization, confidence, quote verification, `ScoringVersion`, inputs fingerprint; `MatchingOptions` with startup validation, satisfies **AC-2**, **AC-3**, **AC-6**, **AC-16**
+3. [x] Application: `IJobRequirementExtractor`, `IMatchRepository`, `MatchProfileReadModel` query; Infrastructure: AI extractor on the `JobExtraction` purpose (added to `AiPurposes.All`; no tools, truncation, schema bounds) and the Fake provider's extraction answer, satisfies **AC-12**, **AC-13**
+4. [x] `JobContentChanged` event published by the Application callers at job create and primary change; handler; `ExtractJobRequirementsJob` with the raw SQL upsert, satisfies **AC-1**, **AC-7**
+5. [x] `GET /internal/jobs/{jobId}/match` and a `/jobs/{id}` page with the match panel, satisfies **AC-10**, **AC-15**
 
 **Slice 2: every dimension and real profile inputs**
-6. Scorer: title, experience, location and remote, salary, education, job type, work authorization, blockers and `BlockerCap`, missing and unknown lists, satisfies **AC-3**, **AC-4**, **AC-5**
-7. Profile: `PreconditionFailed`/`PreconditionRequired` in `Result<T>` and `ToHttp`; `GET`/`PUT /internal/profile/{profileId}/match-profile` with ETag, validation, skill name normalization, `MatchProfileChanged` event, handler and `RescoreProfileJob`; `JobMatched` on a threshold crossing, satisfies **AC-7**, **AC-11**, **AC-17**
-8. `/profile` page (preferences, skills, experience, education, 412 handling) and nav item, satisfies **AC-11**
+6. [x] Scorer: title, experience, location and remote, salary, education, job type, work authorization, blockers and `BlockerCap`, missing and unknown lists, satisfies **AC-3**, **AC-4**, **AC-5**
+7. [x] Profile: `PreconditionFailed`/`PreconditionRequired` in `Result<T>` and `ToHttp`; `GET`/`PUT /internal/profile/{profileId}/match-profile` with ETag, validation, skill name normalization, `MatchProfileChanged` event, handler and `RescoreProfileJob`; `JobMatched` on a threshold crossing, satisfies **AC-7**, **AC-11**, **AC-17**
+8. [x] `/profile` page (preferences, skills, experience, education, 412 handling) and nav item, satisfies **AC-11**
 
 **Slice 3: list, recovery and upkeep**
-9. `GET /internal/matches` and the `/jobs` list with paging, ordering, badges and the incomplete profile banner, satisfies **AC-9**
-10. Rescore endpoint and button; extraction failure path (attempt counter, `Failed`, rules only fallback with the location parser, notice), satisfies **AC-8**, **AC-10**
-11. Merge and split handling (survivor and split events, requirements cascade) and `MatchSweepJob` plus the Api start enqueue, satisfies **AC-1**, **AC-7**, **AC-14**
-12. Tests per the critical scenarios: scorer and fingerprint unit tests in the Domain tests; integration tests with `WebApplicationFactory` on the live Postgres for events, jobs, endpoints and ETag, satisfies **AC-1** to **AC-17**
+9. [x] `GET /internal/matches` and the `/jobs` list with paging, ordering, badges and the incomplete profile banner, satisfies **AC-9**
+10. [x] Rescore endpoint and button; extraction failure path (attempt counter, `Failed`, rules only fallback with the location parser, notice), satisfies **AC-8**, **AC-10**
+11. [x] Merge and split handling (survivor and split events, requirements cascade) and `MatchSweepJob` plus the Api start enqueue, satisfies **AC-1**, **AC-7**, **AC-14**
+12. [ ] Tests per the critical scenarios: scorer and fingerprint unit tests in the Domain tests; integration tests with `WebApplicationFactory` on the live Postgres for events, jobs, endpoints and ETag, satisfies **AC-1** to **AC-17**
 
 ## Consequences
 
