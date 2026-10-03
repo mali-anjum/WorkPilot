@@ -1,0 +1,380 @@
+@page "/notifications"
+@using WorkPilot.Contracts.Notifications
+@using WorkPilot.Web.Features.Audit
+@using WorkPilot.Web.Features.Common
+@using WorkPilot.Web.Features.Notifications
+@using WorkPilot.Web.Features.Profile
+@implements IDisposable
+@inject INotificationsApiClient NotificationsApi
+@inject BrowserTimeZone TimeZone
+@inject NavigationManager Navigation
+
+<HeadContent><link rel="stylesheet" href="css/notifications.css" /></HeadContent>
+<PageTitle>Notifications</PageTitle>
+
+<PageHeader Title="Notifications" Description="Approvals waiting for you, failed runs and strong new matches, newest first." />
+
+<div class="wp-notes__toolbar">
+    <nav class="wp-notes__filters" aria-label="Filter notifications">
+        <a class="wp-notes__chip @(UnreadOnly ? "" : "wp-notes__chip--active")" href="@NotificationDisplay.PageHref(1, false)" aria-current="@(UnreadOnly ? null : "page")">All</a>
+        <a class="wp-notes__chip @(UnreadOnly ? "wp-notes__chip--active" : "")" href="@NotificationDisplay.PageHref(1, true)" aria-current="@(UnreadOnly ? "page" : null)">Unread only</a>
+    </nav>
+    <Button Variant="ButtonVariant.Secondary" Size="ButtonSize.Sm" Disabled="@(_markingAll || _loading || !_items.Any(i => i.ReadAt is null))" OnClick="MarkAllReadAsync">
+        @(_markingAll ? "Marking…" : "Mark all read")
+    </Button>
+</div>
+
+@if (_actionError is not null)
+{
+    <p class="wp-notes__error-text" role="alert">@_actionError</p>
+}
+
+@if (_loading)
+{
+    <p class="wp-notes__muted" role="status">Loading notifications…</p>
+}
+else if (_error is not null)
+{
+    <div class="wp-notes__error" role="alert">
+        <p>@_error</p>
+        <Button Variant="ButtonVariant.Secondary" Size="ButtonSize.Sm" OnClick="LoadAsync">Retry</Button>
+    </div>
+}
+else if (_items.Count == 0)
+{
+    <EmptyState Title="You're all caught up"
+                Description="@(UnreadOnly ? "No unread notifications." : "Approvals, failed runs and strong matches show up here when they happen.")" />
+}
+else
+{
+    <ol class="wp-notes__list">
+        @foreach (var item in _items)
+        {
+            var unread = item.ReadAt is null;
+            var link = NotificationDisplay.SafeLink(item.Link);
+            <li class="wp-notes__item @(unread ? "wp-notes__item--unread" : "")" @key="item.Id">
+                <div class="wp-notes__main">
+                    <div class="wp-notes__meta">
+                        <Badge Status="@NotificationDisplay.PriorityStatus(item.Priority)">@NotificationDisplay.PriorityLabel(item.Priority)</Badge>
+                        <time class="wp-notes__muted" datetime="@item.CreatedAt.ToString("O")" title="@ActivitySummaries.Exact(item.CreatedAt, TimeZone.Current)">@ActivitySummaries.Relative(item.CreatedAt, _now, TimeZone.Current)</time>
+                        @if (unread)
+                        {
+                            <span class="wp-notes__unread-dot" aria-label="Unread"></span>
+                        }
+                    </div>
+                    @if (link is not null)
+                    {
+                        <a class="wp-notes__title" href="@link" @onclick="() => OpenAsync(item)" @onclick:preventDefault>@item.Title</a>
+                    }
+                    else
+                    {
+                        <span class="wp-notes__title">@item.Title</span>
+                    }
+                    @if (item.Body is not null)
+                    {
+                        <p class="wp-notes__body">@item.Body</p>
+                    }
+                </div>
+                <div class="wp-notes__actions">
+                    <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Sm" Disabled="@_busy.Contains(item.Id)" OnClick="() => SetReadAsync(item, unread)">
+                        @(unread ? "Mark read" : "Mark unread")
+                    </Button>
+                    <Button Variant="ButtonVariant.Ghost" Size="ButtonSize.Sm" Disabled="@_busy.Contains(item.Id)" AriaLabel="@($"Dismiss {item.Title}")" OnClick="() => DismissAsync(item)">
+                        Dismiss
+                    </Button>
+                </div>
+            </li>
+        }
+    </ol>
+
+    @if (TotalPages > 1)
+    {
+        <nav class="wp-notes__pages" aria-label="Pages">
+            @for (var p = 1; p <= TotalPages; p++)
+            {
+                var number = p;
+                <a class="wp-notes__page @(number == CurrentPage ? "wp-notes__page--active" : "")"
+                   href="@NotificationDisplay.PageHref(number, UnreadOnly)"
+                   aria-current="@(number == CurrentPage ? "page" : null)">@number</a>
+            }
+        </nav>
+    }
+}
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    /// <summary>The page number, from <c>?page=</c> (AC-5); 1 when absent or invalid.</summary>
+    [SupplyParameterFromQuery(Name = "page")]
+    public int? Page { get; set; }
+
+    /// <summary>Whether only unread notifications show, from <c>?unread=true</c> (AC-5).</summary>
+    [SupplyParameterFromQuery(Name = "unread")]
+    public bool UnreadOnly { get; set; }
+
+    private readonly List<NotificationDto> _items = [];
+    private readonly HashSet<Guid> _busy = [];
+    private CancellationTokenSource _cts = new();
+
+    // Actions (read, dismiss, mark all) outlive a page or toggle change; only leaving the page cancels them.
+    private readonly CancellationTokenSource _lifetime = new();
+    private Guid? _profileId;
+    private (int Page, bool UnreadOnly)? _loaded;
+    private int _total;
+    private bool _loading = true;
+    private bool _markingAll;
+    private string? _error;
+    private string? _actionError;
+    private DateTimeOffset _now = DateTimeOffset.UtcNow;
+
+    private int CurrentPage => Page is > 0 ? Page.Value : 1;
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(_total / (double)NotificationDisplay.PageSize));
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            _profileId = ProfileWebExtensions.ProfileId((await AuthState).User);
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // A page link or the toggle changes only the query string, so the page stays and its parameters change.
+        if (_loaded != (CurrentPage, UnreadOnly))
+        {
+            await LoadAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !TimeZone.IsKnown)
+        {
+            await TimeZone.GetAsync();
+            if (TimeZone.IsKnown)
+            {
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        var token = Restart();
+        _loaded = (CurrentPage, UnreadOnly);
+        _loading = true;
+        _error = null;
+        _items.Clear();
+        if (_profileId is not { } profileId)
+        {
+            _loading = false;
+            _error = "Your session has no profile. Sign out and in again.";
+            return;
+        }
+
+        try
+        {
+            var result = await NotificationsApi.GetPageAsync(profileId, UnreadOnly, CurrentPage, NotificationDisplay.PageSize, token);
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            _now = DateTimeOffset.UtcNow;
+            if (result.Succeeded)
+            {
+                _items.AddRange(result.Value!.Items);
+                _total = result.Value.Total;
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Notifications could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        _loading = false;
+    }
+
+    private async Task OpenAsync(NotificationDto item)
+    {
+        if (item.ReadAt is null)
+        {
+            await SetReadAsync(item, read: true);
+        }
+
+        if (NotificationDisplay.SafeLink(item.Link) is { } link)
+        {
+            Navigation.NavigateTo(link);
+        }
+    }
+
+    private async Task SetReadAsync(NotificationDto item, bool read)
+    {
+        if (_profileId is not { } profileId || !_busy.Add(item.Id))
+        {
+            return;
+        }
+
+        _actionError = null;
+        try
+        {
+            var result = await NotificationsApi.SetReadAsync(profileId, item.Id, read, _lifetime.Token);
+            if (result.Succeeded)
+            {
+                var updated = result.Value!;
+                if (UnreadOnly && updated.ReadAt is not null)
+                {
+                    _items.RemoveAll(i => i.Id == updated.Id);
+                    _total = Math.Max(0, _total - 1);
+                    await RefillIfEmptyAsync();
+                }
+                else
+                {
+                    Replace(updated);
+                }
+            }
+            else
+            {
+                _actionError = result.Error;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _actionError = "Notifications could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            // The page was left mid request.
+        }
+        finally
+        {
+            _busy.Remove(item.Id);
+        }
+    }
+
+    private async Task DismissAsync(NotificationDto item)
+    {
+        if (_profileId is not { } profileId || !_busy.Add(item.Id))
+        {
+            return;
+        }
+
+        _actionError = null;
+        try
+        {
+            var result = await NotificationsApi.DismissAsync(profileId, item.Id, _lifetime.Token);
+            if (result.Succeeded)
+            {
+                _items.RemoveAll(i => i.Id == item.Id);
+                _total = Math.Max(0, _total - 1);
+                await RefillIfEmptyAsync();
+            }
+            else
+            {
+                _actionError = result.Error;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _actionError = "Notifications could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            // The page was left mid request.
+        }
+        finally
+        {
+            _busy.Remove(item.Id);
+        }
+    }
+
+    private async Task MarkAllReadAsync()
+    {
+        if (_profileId is not { } profileId)
+        {
+            return;
+        }
+
+        _markingAll = true;
+        _actionError = null;
+        try
+        {
+            var result = await NotificationsApi.MarkAllReadAsync(profileId, _lifetime.Token);
+            if (result.Succeeded)
+            {
+                await LoadAsync();
+            }
+            else
+            {
+                _actionError = result.Error;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _actionError = "Notifications could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            // The page was left mid request.
+        }
+        finally
+        {
+            _markingAll = false;
+        }
+    }
+
+    // The last row of a page went away: show the rows that are left, on this page or the last one.
+    private async Task RefillIfEmptyAsync()
+    {
+        if (_items.Count > 0 || _total == 0)
+        {
+            return;
+        }
+
+        var page = Math.Min(CurrentPage, TotalPages);
+        if (page == CurrentPage)
+        {
+            await LoadAsync();
+        }
+        else
+        {
+            Navigation.NavigateTo(NotificationDisplay.PageHref(page, UnreadOnly));
+        }
+    }
+
+    private void Replace(NotificationDto updated)
+    {
+        var index = _items.FindIndex(i => i.Id == updated.Id);
+        if (index >= 0)
+        {
+            _items[index] = updated;
+        }
+    }
+
+    // Cancels a load still in flight for the previous page, so its rows never land under the new one.
+    private CancellationToken Restart()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        _cts = new CancellationTokenSource();
+        return _cts.Token;
+    }
+
+    // Cancel only: a handler still awaiting may read a token after this, which a disposed source would throw on.
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _lifetime.Cancel();
+    }
+}

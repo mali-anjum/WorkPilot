@@ -1,19 +1,13 @@
 # 0020. Notifications
 
 **Date**: 2026-09-29
-**Status**: Proposed
+**Status**: Accepted
 
 ## Summary
 
 The product tells you when something needs you. Three events now create a notification: an approval was requested (Action Required), an agent run failed (Error), and jobs crossed your strong match threshold (Info). Strong matches are grouped into one "N new strong matches today" notification per day instead of one per job. A bell in the top bar shows your unread count and refreshes every 15 seconds; clicking it opens the latest 10, and `/notifications` holds the full list with mark read, mark all read and dismiss. Read notifications are cleaned up after 90 days. Notifications are written only by event handlers (spec 0018 outbox), so no module ever writes the table directly, and later features (application outcomes, replies, interviews) add one handler each.
 
-## Context
-
-Approvals (spec 0007) wait silently in `/approvals`: nothing tells you one exists. A failed agent run is visible only in the database. Matching (spec 0019) will find strong jobs in the background with no one looking. The single user needs one place that says "this needs you" and a signal that follows every page.
-
-Spec 0018 settled the mechanics: sources publish events (`ApprovalRequested`, `AgentRunFailed`, `JobMatched` already exist or land in #11), delivery is at least once through `app.outbox_messages`, and `outbox_deliveries` makes each (message, handler) run once. Handlers write only their own module's tables and run inside `HandleEventJob`'s transaction. The Notifications module owns the existing `Notification` table (`ProfileId`, `Type`, `Payload`, `ReadAt`, soft delete), which has no priority, title or link.
-
-The Web and the Api are separate processes and the Blazor app renders InteractiveServer (spec 0016): a component can run a timer for as long as its circuit is open, but the Api cannot push into it without a new channel. One ingestion can push dozens of jobs over the threshold at once. Application outcome events (#16 to #18) do not exist yet.
+The decision record (context, options considered, rationale) is in [rationale.md](rationale.md). Verify steps are in [verify.md](verify.md).
 
 ## Requirements
 
@@ -33,36 +27,11 @@ The Web and the Api are separate processes and the Blazor app renders Interactiv
 - **AC-8**: Every endpoint is scoped to `profileId`: acting on a notification of another profile returns 404 ProblemDetails and changes nothing.
 - **AC-9**: Loading, empty ("You're all caught up") and error states render in both the drawer and the page; a failed bell refresh keeps the last count and tries again on the next tick.
 
-## Options considered
-
-### Option 1: In app notifications, bell polls every 15 seconds (chosen)
-
-Handlers write rows; the bell asks the Api for the unread count on a timer while the circuit is open.
-
-**Pros**: no new infrastructure or channel; works with the existing internal Api and auth; "real time" within seconds; trivial to test.
-**Cons**: up to 15 seconds of delay; one small query every 15 seconds per open tab.
-
-### Option 2: SignalR push from the Api
-
-The Api hosts a hub; the Web circuit subscribes and receives new notifications instantly.
-
-**Pros**: instant; no polling load.
-**Cons**: a second realtime channel between two processes, its own auth, reconnect and backpressure handling; handlers would have to push after commit, which the outbox model (database writes only) does not allow cleanly.
-
-### Option 3: Refresh on navigation only
-
-**Pros**: cheapest.
-**Cons**: not real time; an approval waits unnoticed while you stay on one page, which fails the done bar.
-
 ## Decision
 
 **Chosen option**: Option 1: in app notifications written by outbox event handlers, a polling bell (15 seconds), a daily digest for matches, and a 90 day cleanup of read ones.
 
 **Implementation skills**: `ef-core` (`github/awesome-copilot`, `.agents/skills/ef-core/`) · `supabase-postgres-best-practices` (`supabase/agent-skills`, `.agents/skills/supabase-postgres-best-practices/`) · `csharp-xunit` (`github/awesome-copilot`, `.agents/skills/csharp-xunit/`)
-
-## Rationale
-
-The done bar is "fire in real time off real events" for one user. Seconds of delay meet it; the outbox already adds up to a minute in the worst case (spec 0018), so a push channel would not make delivery truly instant anyway, only the last hop. Option 2's extra channel costs more to operate than it saves. The digest answers the one real noise source (a large board crossing the threshold at once) at the handler, where the event arrives, rather than making every consumer filter. Email or push delivery is left for after Gmail (#23), since sending is an approval gated action (spec 0007) and handlers must not have side effects outside the database.
 
 ## Feature design
 
@@ -151,11 +120,11 @@ Web: `AddNotificationsWeb()` registers `NotificationsApiClient`; `NotificationBe
 
 Tracer Bullet: one event all the way to the bell first, then the rest.
 
-1. Thin thread: migration `AddNotifications` (new columns and indexes); `Notification` domain methods; `AddNotificationsModule` with the `notifications.on-approval-requested` handler; `GET /internal/notifications/unread-count`; `TopBarActions` slot and `NotificationBell` polling the count. Satisfies **AC-1**, **AC-4** (count), **AC-6**.
-2. Drawer and list: `GET /internal/notifications`, read, read all, dismiss endpoints on `Result<T>`; drawer with the latest 10; `/notifications` page with paging and the unread toggle. Satisfies **AC-4**, **AC-5**, **AC-8**.
-3. More sources: `notifications.on-agent-run-failed` with readable reasons; `notifications.on-job-matched` digest with row lock and dedupe. Satisfies **AC-2**, **AC-3**, **AC-6**.
-4. Cleanup recurring job and its option. Satisfies **AC-7**.
-5. States and tests: loading, empty and error states; Domain unit tests (digest, link validation, reason text); Api integration tests (real Postgres) for handlers through `HandleEventJob`, replay, concurrency, scoping and cleanup; bUnit tests for the bell. Satisfies **AC-1** to **AC-9**.
+1. [x] Thin thread: migration `AddNotifications` (new columns and indexes); `Notification` domain methods; `AddNotificationsModule` with the `notifications.on-approval-requested` handler; `GET /internal/notifications/unread-count`; `TopBarActions` slot and `NotificationBell` polling the count. Satisfies **AC-1**, **AC-4** (count), **AC-6**.
+2. [x] Drawer and list: `GET /internal/notifications`, read, read all, dismiss endpoints on `Result<T>`; drawer with the latest 10; `/notifications` page with paging and the unread toggle. Satisfies **AC-4**, **AC-5**, **AC-8**.
+3. [x] More sources: `notifications.on-agent-run-failed` with readable reasons; `notifications.on-job-matched` digest with row lock and dedupe. Satisfies **AC-2**, **AC-3**, **AC-6**.
+4. [x] Cleanup recurring job and its option. Satisfies **AC-7**.
+5. [x] States and tests: loading, empty and error states; Domain unit tests (digest, link validation, reason text); Api integration tests (real Postgres) for handlers through `HandleEventJob`, replay, concurrency, scoping and cleanup; bUnit tests for the bell. Satisfies **AC-1** to **AC-9**.
 
 ## Consequences
 
