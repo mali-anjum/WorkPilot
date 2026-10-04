@@ -58,7 +58,7 @@ Scores a canonical Job against the user's Profile (skills, experience, education
   - [x] Job sources drawer with run now and ProblemDetails field errors (AC-6)
   - [x] Loading, empty and error states, with Api and bUnit tests (AC-8)
   - [x] Responsive content on any device: collapsible filters, stacked rows, windowed pagination, full screen drawer, touch sized controls (AC-9)
-- [ ] Verify it: `/check verify jobs list & job detail`
+- [x] Verify it: `/check verify jobs list & job detail`
 - [ ] Test it: `/test jobs list & job detail`
 - [ ] Review it (fresh model): `/check review`
 - [ ] Document it: `/document pr`
