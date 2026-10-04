@@ -136,6 +136,35 @@ public class ApprovalEndpointsTests(SharedApiFactory factory)
         }
     }
 
+    // covers: spec 0007 AC-4 (up to 20 most recently decided)
+    [Fact]
+    public async Task ListApprovals_KeepsOnlyTheTwentyMostRecentDecisions()
+    {
+        using var client = factory.CreateClient();
+        var profileId = await CreateProfileAsync();
+
+        try
+        {
+            var decided = new List<Guid>();
+            for (var i = 0; i < 21; i++)
+            {
+                var seeded = await SeedAwaitingApprovalRunAsync(profileId, ApprovalTool, ToolRiskTier.ApprovalRequired);
+                await DecideAsync(client, seeded.ApprovalId, "Reject", profileId);
+                decided.Add(seeded.ApprovalId);
+            }
+
+            var view = await client.GetFromJsonAsync<ApprovalCenterDto>($"/internal/approvals?profileId={profileId}");
+
+            Assert.Equal(20, view!.RecentlyDecided.Count);
+            Assert.DoesNotContain(decided[0], view.RecentlyDecided.Select(d => d.ApprovalId));
+            Assert.Equal(decided[20], view.RecentlyDecided[0].ApprovalId);
+        }
+        finally
+        {
+            await CleanupAsync(profileId);
+        }
+    }
+
     // covers: AC-7
     [Fact]
     public async Task Decide_ByAProfileThatDoesNotOwnTheRun_Returns403AndChangesNothing()
