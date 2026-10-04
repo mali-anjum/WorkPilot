@@ -79,7 +79,8 @@ public class JobsTests : BunitContext
         Assert.Contains("Acme · Berlin", rows[0].TextContent);
         Assert.Contains("Posted", rows[0].QuerySelector("time")!.TextContent);
         Assert.Equal($"/jobs/{_api.List.Items[0].JobId}", rows[0].QuerySelector(".wp-jobs__title")!.GetAttribute("href"));
-        Assert.Contains("Blocker", rows[1].TextContent);
+        // The blocker flag sits with the score, so a stacked phone row reads score then blocker (AC-9).
+        Assert.Contains("Blocker", rows[1].QuerySelector(".wp-jobs__score")!.TextContent);
         Assert.Contains("2 jobs", cut.Find(".wp-jobs__toolbar").TextContent);
     }
 
@@ -133,6 +134,34 @@ public class JobsTests : BunitContext
                 Sort = JobSorts.Newest,
             },
             query);
+    }
+
+    // covers: spec 0021 AC-9
+    [Fact]
+    public void The_filter_toggle_starts_closed_and_counts_the_applied_filters()
+    {
+        var cut = RenderList("?q=dev&minScore=70&hideBlocked=true&sort=newest");
+
+        var toggle = cut.Find(".wp-jobs__filter-toggle");
+        Assert.StartsWith("Filters (3 active)", toggle.TextContent.Trim());
+        Assert.Equal("false", toggle.GetAttribute("aria-expanded"));
+        Assert.Equal("wp-jobs-filters", toggle.GetAttribute("aria-controls"));
+        Assert.DoesNotContain("wp-jobs__filters--open", cut.Find("#wp-jobs-filters").ClassName);
+
+        toggle.Click();
+
+        Assert.Equal("true", cut.Find(".wp-jobs__filter-toggle").GetAttribute("aria-expanded"));
+        Assert.Contains("wp-jobs__filters--open", cut.Find("#wp-jobs-filters").ClassName);
+    }
+
+    // covers: spec 0021 AC-9
+    [Fact]
+    public void The_filter_toggle_shows_no_count_without_filters()
+    {
+        var cut = RenderList("?sort=newest");
+
+        Assert.StartsWith("Filters", cut.Find(".wp-jobs__filter-toggle").TextContent.Trim());
+        Assert.DoesNotContain("active", cut.Find(".wp-jobs__filter-toggle").TextContent);
     }
 
     // covers: spec 0021 AC-2
@@ -200,6 +229,27 @@ public class JobsTests : BunitContext
         Assert.Equal("page", pages[0].GetAttribute("aria-current"));
         Assert.Equal("http://localhost/jobs?minScore=50&page=2", pages[1].GetAttribute("href"));
         Assert.Single(cut.FindAll(".wp-jobs__gap"));
+        // Page 1 has no Previous; Next goes to page 2.
+        var step = Assert.Single(cut.FindAll(".wp-jobs__step"));
+        Assert.Equal("Next →", step.TextContent);
+        Assert.Equal("http://localhost/jobs?minScore=50&page=2", step.GetAttribute("href"));
+    }
+
+    // covers: spec 0021 AC-9
+    [Fact]
+    public void A_middle_page_offers_previous_and_next_and_marks_far_pages()
+    {
+        _api.List = new(Enumerable.Range(0, 25).Select(i => Item($"Job {i}", 50)).ToList(), 260, 6, 25, false);
+
+        var cut = RenderList("?page=6");
+
+        var steps = cut.FindAll(".wp-jobs__step");
+        Assert.Equal(["← Previous", "Next →"], steps.Select(s => s.TextContent));
+        Assert.Equal("http://localhost/jobs?page=5", steps[0].GetAttribute("href"));
+        Assert.Equal("http://localhost/jobs?page=7", steps[1].GetAttribute("href"));
+        // A phone keeps only the current page and its neighbours; the CSS hides the rest.
+        var near = cut.FindAll(".wp-jobs__page:not(.wp-jobs__page--far)").Select(p => p.TextContent);
+        Assert.Equal(["5", "6", "7"], near);
     }
 
     // covers: spec 0021 AC-4
@@ -339,6 +389,9 @@ public class JobsTests : BunitContext
         Assert.Equal("Backend Engineer", cut.Find("h1").TextContent);
         var main = cut.Find(".wp-jobs__detail-main");
         Assert.Contains("90,000 to 120,000", main.TextContent);
+        // Exact dates show as text, not only in a hover tooltip (AC-9).
+        Assert.Contains("Oct 3, 2026, 09:00:00 (UTC)", main.QuerySelector(".wp-jobs__facts")!.TextContent);
+        Assert.Contains("Oct 3, 2026, 09:00:00 (UTC)", main.QuerySelector(".wp-jobs__link")!.TextContent);
         Assert.Contains("Build APIs.", main.QuerySelector(".wp-jobs__description")!.TextContent);
         var links = main.QuerySelectorAll(".wp-jobs__link");
         Assert.Equal(2, links.Length);

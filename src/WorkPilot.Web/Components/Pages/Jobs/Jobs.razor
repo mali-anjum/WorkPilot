@@ -30,7 +30,14 @@
 }
 
 <div class="wp-jobs__layout">
-    <aside class="wp-jobs__filters" aria-label="Filters">
+    @* Below 960px the filters fold behind this toggle, closed on load (AC-9); wider, it is hidden and they always show. *@
+    <button type="button" class="wp-jobs__filter-toggle" aria-expanded="@(_filtersOpen ? "true" : "false")" aria-controls="wp-jobs-filters"
+            @onclick="() => _filtersOpen = !_filtersOpen">
+        <span>@FilterToggleLabel</span>
+        <span aria-hidden="true">@(_filtersOpen ? "▴" : "▾")</span>
+    </button>
+
+    <aside id="wp-jobs-filters" class="wp-jobs__filters @(_filtersOpen ? "wp-jobs__filters--open" : "")" aria-label="Filters">
         <form class="wp-jobs__form" role="search" aria-label="Filter jobs" @onsubmit="ApplyTextAsync" @onsubmit:preventDefault>
             <label>
                 <span>Search</span>
@@ -200,6 +207,10 @@
                             @if (item.Score is not null)
                             {
                                 <Badge Status="@JobDisplay.ScoreStatus(item.Score, item.HasBlocker)">@JobDisplay.ScoreLabel(item)</Badge>
+                                @if (item.HasBlocker)
+                                {
+                                    <Badge Status="StatusKind.Danger">Blocker</Badge>
+                                }
                             }
                             else
                             {
@@ -218,10 +229,6 @@
                             <a class="wp-jobs__title" href="@($"/jobs/{item.JobId}")">@item.Title</a>
                             <span class="wp-jobs__company">@item.Company@(item.Location is null ? "" : $" · {item.Location}")</span>
                             <div class="wp-jobs__meta">
-                                @if (item.HasBlocker)
-                                {
-                                    <Badge Status="StatusKind.Danger">Blocker</Badge>
-                                }
                                 @if (item.RemoteType is not null)
                                 {
                                     <Badge Status="StatusKind.Info">@item.RemoteType</Badge>
@@ -257,11 +264,16 @@
             @if (TotalPages > 1)
             {
                 <nav class="wp-jobs__pages" aria-label="Pages">
+                    @if (CurrentPage > 1)
+                    {
+                        <a class="wp-jobs__step" href="@PageHref(CurrentPage - 1)" rel="prev">← Previous</a>
+                    }
                     @foreach (var number in JobDisplay.PageWindow(CurrentPage, TotalPages))
                     {
                         if (number is { } n)
                         {
-                            <a class="wp-jobs__page @(n == CurrentPage ? "wp-jobs__page--active" : "")"
+                            @* Below 600px only the current page and its neighbours show (AC-9). *@
+                            <a class="wp-jobs__page @(n == CurrentPage ? "wp-jobs__page--active" : "") @(Math.Abs(n - CurrentPage) > 1 ? "wp-jobs__page--far" : "")"
                                href="@PageHref(n)"
                                aria-label="@($"Page {n}")"
                                aria-current="@(n == CurrentPage ? "page" : null)">@n</a>
@@ -270,6 +282,10 @@
                         {
                             <span class="wp-jobs__gap" aria-hidden="true">…</span>
                         }
+                    }
+                    @if (CurrentPage < TotalPages)
+                    {
+                        <a class="wp-jobs__step" href="@PageHref(CurrentPage + 1)" rel="next">Next →</a>
                     }
                 </nav>
             }
@@ -320,6 +336,7 @@
     private JobListItemDto? _undo;
     private bool _loading = true;
     private bool _sourcesOpen;
+    private bool _filtersOpen;
     private string? _error;
     private string? _actionError;
     private DateTimeOffset _now = DateTimeOffset.UtcNow;
@@ -336,10 +353,18 @@
 
     private int TotalPages => _list is null ? 1 : JobDisplay.PageCount(_list.Total, JobDisplay.PageSize);
 
-    private bool HasFilters =>
-        !string.IsNullOrWhiteSpace(Q) || !string.IsNullOrWhiteSpace(Company) || !string.IsNullOrWhiteSpace(Location)
-        || !string.IsNullOrWhiteSpace(Remote) || Source is not null || MinScore is not null || Posted is not null
-        || SalaryMin is not null || HideBlocked || ShowDismissed;
+    // The applied filters (from the URL, not drafts still being typed); the sort is not a filter.
+    private int ActiveFilterCount =>
+        new[]
+        {
+            !string.IsNullOrWhiteSpace(Q), !string.IsNullOrWhiteSpace(Company), !string.IsNullOrWhiteSpace(Location),
+            !string.IsNullOrWhiteSpace(Remote), Source is not null, MinScore is not null, Posted is not null,
+            SalaryMin is not null, HideBlocked, ShowDismissed,
+        }.Count(active => active);
+
+    private bool HasFilters => ActiveFilterCount > 0;
+
+    private string FilterToggleLabel => HasFilters ? $"Filters ({ActiveFilterCount} active)" : "Filters";
 
     // The current choice stays listed even when no listed job has it any more.
     private IEnumerable<string> CompanyChoices => WithCurrent(_facets?.Companies, Company);

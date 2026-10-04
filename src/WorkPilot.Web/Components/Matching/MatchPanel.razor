@@ -105,15 +105,16 @@
     </Card>
 
     <Card Title="Score breakdown">
-        <table class="wp-match__table">
-            <thead><tr><th scope="col">Dimension</th><th scope="col">Result</th><th scope="col">Points</th></tr></thead>
-            <tbody>
+        @* Explicit roles keep it a table for screen readers when a narrow screen stacks its cells (spec 0021, AC-9). *@
+        <table class="wp-match__table" role="table">
+            <thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Dimension</th><th scope="col" role="columnheader">Result</th><th scope="col" role="columnheader">Points</th></tr></thead>
+            <tbody role="rowgroup">
                 @foreach (var dimension in Match.Explanation.Dimensions)
                 {
-                    <tr>
-                        <th scope="row">@Label(dimension.Name)</th>
-                        <td><Badge Status="@StatusOf(dimension.Status)">@dimension.Status</Badge></td>
-                        <td>@(dimension.Status == "Unknown" ? "not counted" : $"{dimension.Earned:0.##} / {dimension.Weight}")</td>
+                    <tr role="row">
+                        <th scope="row" role="rowheader">@Label(dimension.Name)</th>
+                        <td role="cell"><Badge Status="@StatusOf(dimension.Status)">@dimension.Status</Badge></td>
+                        <td role="cell">@(dimension.Status == "Unknown" ? "not counted" : $"{dimension.Earned:0.##} / {dimension.Weight}")</td>
                     </tr>
                 }
             </tbody>

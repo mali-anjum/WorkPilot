@@ -20,6 +20,61 @@
     font-size: var(--text-sm);
 }
 
+/* Long words and URLs wrap instead of pushing the page wider; nothing is cut off with an ellipsis (AC-9). */
+.wp-jobs__header .wp-page-header__title,
+.wp-jobs__header .wp-page-header__description {
+    overflow-wrap: anywhere;
+}
+
+/* Standalone links and controls are at least 24px each way (WCAG 2.2 target size, AC-9). */
+.wp-jobs__back a,
+a.wp-jobs__reason,
+.wp-jobs__link-head a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.5rem;
+}
+
+.wp-jobs__header .wp-button,
+.wp-jobs__layout .wp-button,
+.wp-jobs__detail .wp-button,
+.wp-drawer .wp-button {
+    min-width: 1.5rem;
+    min-height: 1.5rem;
+}
+
+.wp-jobs__score .wp-badge,
+.wp-jobs__meta .wp-badge,
+.wp-jobs__link-head .wp-badge,
+.wp-sources__title .wp-badge,
+.wp-match-panel .wp-badge {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+}
+
+/* Shown only below 960px, where the filters fold behind it. */
+.wp-jobs__filter-toggle {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    width: 100%;
+    min-height: 2.75rem;
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.wp-jobs__filter-toggle:hover {
+    border-color: var(--color-accent);
+}
+
 /* ---------- list layout: filters beside results ---------- */
 .wp-jobs__layout {
     display: grid;
@@ -69,11 +124,22 @@
     border-color: var(--color-danger);
 }
 
+/* The whole label is the tap target; the box itself is 24px. */
 .wp-jobs__form label.wp-jobs__check {
     flex-direction: row;
     align-items: center;
     gap: var(--space-2);
+    min-height: 1.5rem;
     color: var(--color-text);
+    cursor: pointer;
+}
+
+.wp-jobs__check input[type="checkbox"] {
+    flex: none;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin: 0;
+    accent-color: var(--color-accent);
 }
 
 .wp-jobs__form-actions {
@@ -110,6 +176,7 @@
 }
 
 .wp-jobs__notice {
+    overflow-wrap: anywhere;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -239,7 +306,12 @@ a.wp-jobs__reason {
     gap: var(--space-2);
 }
 
-.wp-jobs__page {
+.wp-jobs__page,
+.wp-jobs__step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.25rem;
     min-width: 2.25rem;
     padding: var(--space-1) var(--space-3);
     border: 1px solid var(--color-border);
@@ -251,7 +323,8 @@ a.wp-jobs__reason {
     text-decoration: none;
 }
 
-.wp-jobs__page:hover {
+.wp-jobs__page:hover,
+.wp-jobs__step:hover {
     color: var(--color-text);
     border-color: var(--color-text-muted);
 }
@@ -353,6 +426,7 @@ a.wp-jobs__reason {
 }
 
 .wp-jobs__link-button {
+    overflow-wrap: anywhere;
     display: inline-flex;
     align-items: center;
     padding: var(--space-2) var(--space-4);
@@ -468,6 +542,7 @@ a.wp-jobs__reason {
 
 .wp-sources__item {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
@@ -492,26 +567,156 @@ a.wp-jobs__reason {
     overflow-wrap: anywhere;
 }
 
-/* ---------- narrow screens: one column ---------- */
+/* ---------- below 960px: one column, filters behind a toggle (AC-9) ---------- */
 @media (max-width: 960px) {
     .wp-jobs__layout,
     .wp-jobs__detail {
         grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-4);
+    }
+
+    .wp-jobs__filter-toggle {
+        display: flex;
     }
 
     .wp-jobs__filters {
         position: static;
     }
+
+    .wp-jobs__filters:not(.wp-jobs__filters--open) {
+        display: none;
+    }
+
+    /* Main touch targets are 44px tall. */
+    .wp-jobs__header .wp-button,
+    .wp-jobs__layout .wp-button,
+    .wp-jobs__detail .wp-button,
+    .wp-drawer .wp-button,
+    .wp-jobs__link-button,
+    .wp-jobs__page,
+    .wp-jobs__step {
+        min-height: 2.75rem;
+    }
+
+    .wp-jobs__header .wp-button,
+    .wp-jobs__layout .wp-button,
+    .wp-jobs__detail .wp-button,
+    .wp-drawer .wp-button,
+    .wp-jobs__page {
+        min-width: 2.75rem;
+    }
+
+    .wp-jobs__check {
+        min-height: 2.75rem;
+    }
 }
 
+/* ---------- below 600px: stacked rows, windowed pages, full screen drawer (AC-9) ---------- */
 @media (max-width: 600px) {
+    /* Title, then score and blocker, then the details, then Dismiss or Undo. */
     .wp-jobs__row {
-        grid-template-columns: minmax(0, 1fr);
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
         gap: var(--space-2);
     }
 
+    .wp-jobs__main {
+        display: contents;
+    }
+
+    .wp-jobs__title { order: 1; }
+    .wp-jobs__score { order: 2; }
+    .wp-jobs__company { order: 3; }
+    .wp-jobs__meta { order: 4; }
+    .wp-jobs__row > .wp-jobs__actions { order: 5; }
+
     .wp-jobs__score {
         flex-direction: row;
+        flex-wrap: wrap;
         align-items: center;
+    }
+
+    .wp-jobs__row--skeleton {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    /* Previous, Next, the current page and its neighbours. */
+    .wp-jobs__page--far,
+    .wp-jobs__gap {
+        display: none;
+    }
+
+    .wp-jobs__pages {
+        gap: var(--space-1);
+    }
+
+    /* The detail's actions and Rescore run full width. */
+    .wp-jobs__header > .wp-jobs__actions,
+    .wp-jobs__header .wp-jobs__actions > *,
+    .wp-match-panel__summary .wp-button {
+        flex: 1 1 100%;
+        width: 100%;
+    }
+
+    /* The score breakdown stacks into one column: dimension, then result and points. */
+    .wp-match-panel .wp-match__table,
+    .wp-match-panel .wp-match__table tbody,
+    .wp-match-panel .wp-match__table tr {
+        display: block;
+    }
+
+    .wp-match-panel .wp-match__table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .wp-match-panel .wp-match__table tr {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-1) var(--space-3);
+        padding: var(--space-2) 0;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .wp-match-panel .wp-match__table th,
+    .wp-match-panel .wp-match__table td {
+        padding: 0;
+        border: 0;
+    }
+
+    .wp-match-panel .wp-match__table tbody th {
+        flex: 1 1 100%;
+    }
+
+    /* The drawer fills the screen; source rows and the add form stack. */
+    .wp-drawer {
+        width: 100%;
+        border-left: 0;
+        box-shadow: none;
+    }
+
+    .wp-drawer__header {
+        padding: var(--space-3) var(--space-4);
+    }
+
+    .wp-drawer__body {
+        padding: var(--space-4);
+    }
+
+    .wp-sources__item {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .wp-drawer .wp-jobs__form-actions > *,
+    .wp-sources__item > .wp-button {
+        width: 100%;
     }
 }

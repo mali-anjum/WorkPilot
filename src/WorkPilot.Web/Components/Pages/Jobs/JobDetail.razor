@@ -321,7 +321,9 @@ else if (_job is not null)
         }
     }
 
-    private string When(DateTimeOffset at) => ActivitySummaries.Relative(at, _now, TimeZone.Current);
+    // Exact as well as relative, as text: on a touch screen there is no hover tooltip to read it from (AC-9).
+    private string When(DateTimeOffset at) =>
+        $"{ActivitySummaries.Exact(at, TimeZone.Current)}, {ActivitySummaries.Relative(at, _now, TimeZone.Current)}";
 
     private CancellationToken Restart()
     {

@@ -52,12 +52,12 @@ Scores a canonical Job against the user's Profile (skills, experience, education
 `/jobs` list with filters (location, remote, salary, experience, technology, company, job type, source, match score, date posted, visa sponsorship) and the two column job detail (job info + agent analysis) per the product spec.
 **Done when:** the list is filterable and sortable against real matched jobs, and detail shows the explainable match analysis from feature 11.
 - [x] Design it (spec): `/architect jobs list & job detail` → [0021](../specs/0021-jobs-list-detail/index.md)
-- [ ] Build it: `/develop jobs list & job detail` (code in `src/WorkPilot.Web/Components/Pages/Jobs/`, `src/WorkPilot.Web/Features/Jobs/`, `src/WorkPilot.Infrastructure/Modules/Jobs/{JobCatalogQueries,Matching/MatchQueries}.cs`, `src/WorkPilot.Contracts/Jobs/`, migration `AddJobsList`)
+- [x] Build it: `/develop jobs list & job detail` (code in `src/WorkPilot.Web/Components/Pages/Jobs/`, `src/WorkPilot.Web/Features/Jobs/`, `src/WorkPilot.Infrastructure/Modules/Jobs/{JobCatalogQueries,Matching/MatchQueries}.cs`, `src/WorkPilot.Contracts/Jobs/`, migration `AddJobsList`)
   - [x] Search query with sorts, filters and facets, and the `/jobs` list with URL bound filters and the incomplete profile banner (AC-1, AC-2, AC-3, AC-7)
   - [x] Two column `/jobs/{id}` with the shared match panel, and dismissal with `AddJobsList` (AC-4, AC-5)
   - [x] Job sources drawer with run now and ProblemDetails field errors (AC-6)
   - [x] Loading, empty and error states, with Api and bUnit tests (AC-8)
-  - [ ] Responsive content on any device: collapsible filters, stacked rows, windowed pagination, full screen drawer, touch sized controls (AC-9)
+  - [x] Responsive content on any device: collapsible filters, stacked rows, windowed pagination, full screen drawer, touch sized controls (AC-9)
 - [ ] Verify it: `/check verify jobs list & job detail`
 - [ ] Test it: `/test jobs list & job detail`
 - [ ] Review it (fresh model): `/check review`
