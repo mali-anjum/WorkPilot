@@ -94,6 +94,45 @@ public class ChatClientPlannerTests
         Assert.DoesNotContain("SECRET-GOAL-TEXT", ex.Message);
     }
 
+    // covers: spec 0005 AC-7 (the retry tells the model what was wrong with its first answer)
+    [Fact]
+    public async Task PlanAsync_OnRetry_FeedsTheParseErrorBackToTheModel()
+    {
+        var chat = new ScriptedChatClient("not json", """{"steps":[{"tool":"list_my_profile","arguments":{}}]}""");
+        var planner = new ChatClientPlanner(chat, Target);
+
+        await planner.PlanAsync("list my profile", Tools, CancellationToken.None);
+
+        Assert.DoesNotContain("didn't parse", chat.Prompts[0]);
+        Assert.Contains("didn't parse", chat.Prompts[1]);
+    }
+
+    // covers: spec 0005 AC-1 (a plan is capped at 10 steps)
+    [Fact]
+    public async Task PlanAsync_WithMoreThanTenSteps_RetriesAndAcceptsAPlanOfTen()
+    {
+        var chat = new ScriptedChatClient(PlanOf(11), PlanOf(10));
+        var planner = new ChatClientPlanner(chat, Target);
+
+        var plan = await planner.PlanAsync("list my profile", Tools, CancellationToken.None);
+
+        Assert.Equal(10, plan.Steps.Count);
+        Assert.Equal(2, chat.CallCount);
+    }
+
+    // covers: spec 0005 AC-1, AC-7
+    [Fact]
+    public async Task PlanAsync_WithMoreThanTenStepsTwice_ThrowsPlanParseException()
+    {
+        var chat = new ScriptedChatClient(PlanOf(11), PlanOf(11));
+        var planner = new ChatClientPlanner(chat, Target);
+
+        await Assert.ThrowsAsync<PlanParseException>(() => planner.PlanAsync("list my profile", Tools, CancellationToken.None));
+    }
+
+    private static string PlanOf(int steps) =>
+        $$"""{"steps":[{{string.Join(",", Enumerable.Repeat("""{"tool":"list_my_profile","arguments":{}}""", steps))}}]}""";
+
     // A minimal IChatClient stand in that replays a fixed script of raw
     // response bodies, one per call, so a test can pin exactly what the
     // "model" said on each attempt.
@@ -103,9 +142,12 @@ public class ChatClientPlannerTests
 
         public int CallCount { get; private set; }
 
+        public List<string> Prompts { get; } = [];
+
         public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
         {
             CallCount++;
+            Prompts.Add(string.Join("\n", messages.Select(m => m.Text)));
             var text = responses[Math.Min(_index, responses.Length - 1)];
             _index++;
             return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, text)));
