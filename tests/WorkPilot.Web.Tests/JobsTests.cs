@@ -161,6 +161,19 @@ public class JobsTests : BunitContext
         Assert.Equal("http://localhost/jobs?q=platform", Navigation.Uri);
     }
 
+    // covers: spec 0021 AC-2
+    [Fact]
+    public void A_select_change_keeps_a_typed_filter_not_yet_applied()
+    {
+        _api.List = new([Item("Backend Engineer", 82)], 80, 3, 25, false);
+        var cut = RenderList("?page=3");
+
+        cut.Find("input[placeholder='0 to 100']").Input("70");
+        cut.FindAll("select")[3].Change("30");
+
+        Assert.Equal("http://localhost/jobs?minScore=70&posted=30", Navigation.Uri);
+    }
+
     // covers: spec 0021 AC-2, AC-8
     [Fact]
     public void No_match_for_the_filters_offers_to_clear_them()

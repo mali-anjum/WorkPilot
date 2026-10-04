@@ -576,23 +576,28 @@
         var unchanged = Blank(_q) == Blank(Q) && Blank(_location) == Blank(Location) && _minScore == MinScore && _salaryMin == SalaryMin;
         if (!unchanged)
         {
-            Go(new Dictionary<string, object?>
-            {
-                [QText] = Blank(_q),
-                [QLocation] = Blank(_location),
-                [QMinScore] = _minScore,
-                [QSalaryMin] = _salaryMin,
-            });
+            Go(TypedFilters());
         }
 
         return Task.CompletedTask;
     }
 
+    // A select or checkbox change also applies what was typed but not applied yet, or the reload would wipe it.
     private Task SetAsync(string name, string? value)
     {
-        Go(new Dictionary<string, object?> { [name] = Blank(value) });
+        var changes = TypedFilters();
+        changes[name] = Blank(value);
+        Go(changes);
         return Task.CompletedTask;
     }
+
+    private Dictionary<string, object?> TypedFilters() => new()
+    {
+        [QText] = Blank(_q),
+        [QLocation] = Blank(_location),
+        [QMinScore] = _minScore,
+        [QSalaryMin] = _salaryMin,
+    };
 
     private Task ToggleAsync(string name, ChangeEventArgs e) => SetAsync(name, IsChecked(e) ? "true" : null);
 
