@@ -95,6 +95,38 @@ public class JobApplicationTests
         [ApplicationStatus.Withdrawn] = [ApplicationStatus.Withdrawn],
     };
 
+    // covers: spec 0002 AC-4 (every from/to pair, so a transition added by accident fails too)
+    [Fact]
+    public void TransitionTo_AllowsExactlyTheSpecsStateMachine()
+    {
+        ApplicationStatus[] stages =
+        [
+            ApplicationStatus.Discovered, ApplicationStatus.Matched, ApplicationStatus.Preparing,
+            ApplicationStatus.PendingApproval, ApplicationStatus.Submitted, ApplicationStatus.Interviewing,
+        ];
+        ApplicationStatus[] terminal = [ApplicationStatus.Offered, ApplicationStatus.Rejected, ApplicationStatus.Withdrawn];
+
+        bool SpecAllows(ApplicationStatus from, ApplicationStatus to) =>
+            !terminal.Contains(from) && (
+                to == ApplicationStatus.Withdrawn
+                || (Array.IndexOf(stages, from) + 1 < stages.Length && stages[Array.IndexOf(stages, from) + 1] == to)
+                || (from == ApplicationStatus.Submitted && to == ApplicationStatus.Rejected)
+                || (from == ApplicationStatus.Interviewing && to is ApplicationStatus.Offered or ApplicationStatus.Rejected));
+
+        foreach (var from in Enum.GetValues<ApplicationStatus>())
+        {
+            foreach (var to in Enum.GetValues<ApplicationStatus>())
+            {
+                var application = NewApplication();
+                DriveTo(application, from);
+
+                var threw = Record.Exception(() => application.TransitionTo(to)) is InvalidOperationException;
+
+                Assert.True(SpecAllows(from, to) != threw, $"{from} -> {to}: spec allows {SpecAllows(from, to)}, entity threw {threw}");
+            }
+        }
+    }
+
     private static void DriveTo(JobApplication application, ApplicationStatus target)
     {
         foreach (var step in PathTo[target])
