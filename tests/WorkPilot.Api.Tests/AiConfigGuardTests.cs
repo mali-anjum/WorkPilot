@@ -21,7 +21,7 @@ public class AiConfigGuardTests
         foreach (var file in files)
         {
             using var document = JsonDocument.Parse(File.ReadAllText(file));
-            Assert.Empty(PropertiesNamed(document.RootElement, "ApiKey").Where(v => v.ValueKind != JsonValueKind.Null));
+            Assert.DoesNotContain(PropertiesNamed(document.RootElement, "ApiKey"), v => v.ValueKind != JsonValueKind.Null);
         }
 
         using var main = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepoRoot, "src", "WorkPilot.Api", "appsettings.json")));
