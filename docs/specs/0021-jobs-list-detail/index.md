@@ -2,7 +2,7 @@
 
 **Date**: 2026-09-29
 **Status**: In Progress
-**Updated**: 2026-10-02 (aligned with spec 0019 as merged: extends `GET /internal/matches` instead of a second search endpoint, blockers, `/profile`)
+**Updated**: 2026-10-04 (AC-9: fully responsive on any device, which depends on the responsive app shell); 2026-10-02 (aligned with spec 0019 as merged: extends `GET /internal/matches` instead of a second search endpoint, blockers, `/profile`)
 
 ## Summary
 
@@ -27,6 +27,12 @@ Decision history (context, options, rationale): [rationale.md](rationale.md). Ve
 - **AC-6**: A "Job sources" drawer on `/jobs` lists each source (type, board, company name, jobs linked, last run time and its created/updated counts, or `Never run`), lets you add a board (type `greenhouse` or `lever`, board token, optional company name) which queues an ingestion, and has "Run now" per source. Validation failures (unknown type, rejected board token, company name over 200 chars) show next to the field, from ProblemDetails.
 - **AC-7**: When your profile is incomplete (no skills or no experience, spec 0019 AC-9), a banner on `/jobs` says scores need a complete profile and links to `/profile`.
 - **AC-8**: Loading, empty (no jobs yet, with a button that opens the Job sources drawer; no jobs match the filters, with "Clear filters") and error states render; a failed dismiss shows an error and leaves the row as it was.
+- **AC-9**: The content of `/jobs`, `/jobs/{id}` and the Job sources drawer works on any device. It is checked at 320, 390, 768, 1024, 1440 and 1920px, in dark and light themes, inside the content area (`.wp-app-shell__main`). Nothing scrolls sideways, no element's right edge passes the content area's right edge, and titles, company names and descriptions are never cut off with an ellipsis. The shell itself (sidebar, TopBar and its actions) belongs to the responsive app shell decision (see Follow-up); together they make the whole app responsive. The narrow rules:
+  - **Below 960px**: the filters fold into a "Filters (n active)" button, closed by default, that opens them above the list on tap; the sort switch sits on the line above the list; the detail page is one column, details first, then the match panel.
+  - **Below 600px**: each row stacks: title, then the score badge and blocker flag, then company, location, remote type, posted and source badges wrapping freely, then Dismiss or Undo. Pagination shows Previous, Next, the current page and its neighbours instead of every page number. The match panel's breakdown is one column, and Rescore and Dismiss run full width. The drawer is full width and full height, source rows stack with Run now below them, and the add form fields stack.
+  - **Long text**: titles, company names, locations, salary, URLs and badges wrap (`overflow-wrap: anywhere`); a preformatted block in the description scrolls inside its own box.
+  - **Touch**: every button, link and form control is at least 24 by 24px at every width (WCAG 2.2 target size; links inside running text are exempt, as 2.5.8 allows), main buttons (filter toggle, Dismiss, Rescore, Run now, the drawer's close and add) are at least 44px tall below 960px, and each checkbox is tappable across its whole label. Nothing needs hover: the exact posted and seen dates show as text on the detail page, so the list's hover tooltip is a convenience only.
+  - **Out of scope**: color contrast (the design tokens own it).
 
 ## Decision
 
@@ -96,6 +102,7 @@ Web (`AddJobsWeb()`, `WorkPilot.Web/Features/Jobs/JobsApiClient.cs`): pages `Wor
 - Sources: adding a Lever board with a bad token shows the field error; "Run now" queues a run and the drawer shows the new last run after it finishes; verifies **AC-6**.
 - Incomplete profile: banner shows, links to `/profile`, and unscored rows say `Complete your profile`; verifies **AC-7**.
 - Validation: `pageSize=500` gives 400 ProblemDetails; verifies **AC-8**.
+- Responsive: at 320, 390, 768, 1024, 1440 and 1920px, in both themes, `.wp-app-shell__main` has `scrollWidth` equal to `clientWidth` and no descendant's right edge passes its right edge, on `/jobs`, `/jobs/{id}` and with the drawer open; verifies **AC-9**.
 - Merge: dismissing a job that later merges keeps it dismissed on the kept job; verifies **Key invariants**.
 
 ## Build plan
@@ -108,6 +115,7 @@ Tracer Bullet: a thin list end to end first, then filters, detail, dismissal and
 4. Dismissal: migration `AddJobsList` (`job_dismissals`, posted index), PUT/DELETE endpoints, merge moves dismissals, row and detail actions, show dismissed toggle. Satisfies **AC-4**.
 5. Sources drawer: sources summary endpoint, run now endpoint, `POST /internal/jobs/ingestions` errors as ProblemDetails, drawer UI. Satisfies **AC-6**.
 6. States and tests: loading, empty, error; Api integration tests (real Postgres) for search, filters, paging, dismissal, merge, sources; bUnit tests for the filter bar and states. Satisfies **AC-1** to **AC-8**.
+7. Responsive: the collapsible filter toggle and sort placement below 960px, the row order, windowed pagination, one column match breakdown and full screen drawer below 600px, `overflow-wrap` on long text, and the 24px and 44px target sizes, all in `jobs.css` and the two pages; bUnit test for the filter toggle's "n active" count. Satisfies **AC-9**.
 
 ## Consequences
 
@@ -119,6 +127,7 @@ Tracer Bullet: a thin list end to end first, then filters, detail, dismissal and
 - Experience level, job type and visa filters from the scope are not built; the match breakdown covers them on the detail page.
 - `ILIKE` contains searches scan; fine at thousands of jobs, needs a trigram index if the catalog grows large.
 - The sources drawer on `/jobs` duplicates a job the Integrations hub (#31) may take over later.
+- AC-9 covers only the content area, so this feature can finish before the shell; the app is fully responsive only once the responsive app shell ships too.
 
 **Neutral**:
 - `POST /internal/jobs/ingestions` moves its bare 400s onto ProblemDetails (spec 0018 convergence for a touched endpoint).
@@ -126,6 +135,7 @@ Tracer Bullet: a thin list end to end first, then filters, detail, dismissal and
 
 ## Follow-up
 
+- [ ] Responsive app shell (scope feature #35, enrolled from this spec; "Mobile layout" left Deferred): decide how navigation works on a phone and tablet (`/architect responsive app shell`). It owns the sidebar, the TopBar and its actions, and the full page check (`document.documentElement.scrollWidth` equals the viewport width) on every page.
 - [ ] Experience level, job type and visa filters read from `job_requirements.Requirements` (spec 0019 extracts `MinYears`, `JobType`, `Sponsorship`).
 - [ ] Save/shortlist and the Prepare application button with #16.
 - [ ] Decisions made without the engineer (please review): dismissals move on merge; "Run now" enqueues by source id (new endpoint) instead of resending the board token; last run data read from the audit log.

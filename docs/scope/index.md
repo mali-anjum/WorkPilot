@@ -49,12 +49,12 @@ _These are recommendations to keep the build orderly, not requirements. Skip any
 | 32 | Command palette & global search | System | planned |
 | 33 | Onboarding flow | System | planned |
 | 34 | Module contracts groundwork | Foundation | done |
+| 35 | Responsive app shell | System | planned |
 
 ## Deferred
 
 - **LinkedIn auto submission**: full unattended submission on LinkedIn · needs a decision · not assumed authorized, discovery/prep only for now
 - **Multi language / i18n**: out of scope for a single user MVP
-- **Mobile layout**: desktop first per spec; responsive polish deferred
 - **Multi user / team accounts**: product is single user for now
 - **ReAct style Planner & cross run memory**: revisit once a real domain agent's goals show the plan then execute, cold start model is limiting (from spec 0005 follow up)
 - **Approval expiry**: pending approvals never expire today; revisit once real usage shows them piling up (from spec 0005 follow up)
