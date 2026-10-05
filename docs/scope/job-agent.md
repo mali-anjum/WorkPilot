@@ -48,7 +48,7 @@ Scores a canonical Job against the user's Profile (skills, experience, education
 - [x] Review it (fresh model): `/check review` → [review](../reviews/2026-10-03-feat-job-matching-engine.md)
 - [x] Document it: `/document pr`
 
-### 12. Jobs list & job detail · in-progress
+### 12. Jobs list & job detail · done
 `/jobs` list with filters (location, remote, salary, experience, technology, company, job type, source, match score, date posted, visa sponsorship) and the two column job detail (job info + agent analysis) per the product spec.
 **Done when:** the list is filterable and sortable against real matched jobs, and detail shows the explainable match analysis from feature 11.
 - [x] Design it (spec): `/architect jobs list & job detail` → [0021](../specs/0021-jobs-list-detail/index.md)

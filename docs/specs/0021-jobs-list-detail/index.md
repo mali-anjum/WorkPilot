@@ -1,7 +1,7 @@
 # 0021. Jobs list and job detail
 
 **Date**: 2026-09-29
-**Status**: In Progress
+**Status**: Accepted
 **Updated**: 2026-10-04 (AC-9: fully responsive on any device, which depends on the responsive app shell); 2026-10-02 (aligned with spec 0019 as merged: extends `GET /internal/matches` instead of a second search endpoint, blockers, `/profile`)
 
 ## Summary
