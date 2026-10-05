@@ -61,7 +61,7 @@ Scores a canonical Job against the user's Profile (skills, experience, education
 - [x] Verify it: `/check verify jobs list & job detail`
 - [x] Test it: `/test jobs list & job detail`
 - [x] Review it (fresh model): `/check review`
-- [ ] Document it: `/document pr`
+- [x] Document it: `/document pr`
 
 ### 13. Dashboard overview
 `/` answers "what needs attention right now": pipeline counts, today's priorities, upcoming interviews/follow-ups, recent agent activity.
