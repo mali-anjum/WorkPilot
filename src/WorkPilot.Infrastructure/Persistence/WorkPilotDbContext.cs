@@ -51,6 +51,7 @@ public class WorkPilotDbContext(
     public DbSet<JobSourceLink> JobSourceLinks => Set<JobSourceLink>();
     public DbSet<JobMatch> JobMatches => Set<JobMatch>();
     public DbSet<JobRequirement> JobRequirements => Set<JobRequirement>();
+    public DbSet<JobDismissal> JobDismissals => Set<JobDismissal>();
 
     // Applications
     public DbSet<JobApplication> JobApplications => Set<JobApplication>();

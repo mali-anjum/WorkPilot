@@ -26,7 +26,7 @@ _These are recommendations to keep the build orderly, not requirements. Skip any
 | 9 | Job source ingestion & normalization | Slice 1: Job Agent core loop | done |
 | 10 | Job deduplication | Slice 1: Job Agent core loop | done |
 | 11 | Job matching engine & scoring | Slice 1: Job Agent core loop | done |
-| 12 | Jobs list & job detail | Slice 1: Job Agent core loop | planned |
+| 12 | Jobs list & job detail | Slice 1: Job Agent core loop | in-progress |
 | 13 | Dashboard overview | Slice 1: Job Agent core loop | planned |
 | 14 | Resume management | Slice 1: Job Agent core loop | done |
 | 15 | Cover letter generation | Slice 1: Job Agent core loop | planned |
@@ -49,12 +49,12 @@ _These are recommendations to keep the build orderly, not requirements. Skip any
 | 32 | Command palette & global search | System | planned |
 | 33 | Onboarding flow | System | planned |
 | 34 | Module contracts groundwork | Foundation | done |
+| 35 | Responsive app shell | System | planned |
 
 ## Deferred
 
 - **LinkedIn auto submission**: full unattended submission on LinkedIn · needs a decision · not assumed authorized, discovery/prep only for now
 - **Multi language / i18n**: out of scope for a single user MVP
-- **Mobile layout**: desktop first per spec; responsive polish deferred
 - **Multi user / team accounts**: product is single user for now
 - **ReAct style Planner & cross run memory**: revisit once a real domain agent's goals show the plan then execute, cold start model is limiting (from spec 0005 follow up)
 - **Approval expiry**: pending approvals never expire today; revisit once real usage shows them piling up (from spec 0005 follow up)

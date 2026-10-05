@@ -1,20 +1,14 @@
 # 0021. Jobs list and job detail
 
 **Date**: 2026-09-29
-**Status**: Proposed
-**Updated**: 2026-10-02 (aligned with spec 0019 as merged: extends `GET /internal/matches` instead of a second search endpoint, blockers, `/profile`)
+**Status**: In Progress
+**Updated**: 2026-10-04 (AC-9: fully responsive on any device, which depends on the responsive app shell); 2026-10-02 (aligned with spec 0019 as merged: extends `GET /internal/matches` instead of a second search endpoint, blockers, `/profile`)
 
 ## Summary
 
 `/jobs` becomes the place you browse every discovered job: 25 per page, best match first, with filters for the data the catalog actually has (text, company, location, remote type, source, minimum score, posted within, salary, hide blocked jobs), all kept in the URL. You can dismiss a job you are not interested in (hidden by default, one click to undo). `/jobs/{id}` shows the job on the left (details, description, where it was seen) and the Agent's analysis on the right (the match breakdown from spec 0019). A Job sources drawer on `/jobs` lets you add a Greenhouse or Lever board and run ingestion without touching the API.
 
-## Context
-
-Spec 0008 and spec 0017 fill a shared job catalog, and spec 0019 scores each job per profile. The current `/jobs` page is an empty placeholder, and the only list endpoint (`GET /internal/jobs?jobSourceId=`) lists one source at a time with no score, no filter and no paging beyond `take`. Adding a board is possible only with a hand written `POST /internal/jobs/ingestions`, so in normal use the catalog would stay empty.
-
-The scope lists eleven filters. Only some map to stored data: title, company, location, remote type, salary (often empty), source, match score and posted date exist; experience level, job type and visa sponsorship are not `jobs` columns; spec 0019 extracts them into the `job_requirements.Requirements` document per job, and filtering on them is a follow up. Filtering on raw description text would mean scanning descriptions per request.
-
-Jobs are shared (spec 0017), scores and dismissals are per profile. The catalog can reach thousands of rows from a handful of boards, so the list must page and sort in the database. Every page is InteractiveServer (spec 0016) and reads the Api through a typed client, with failures as ProblemDetails read by `ApiResultReader` (spec 0018).
+Decision history (context, options, rationale): [rationale.md](rationale.md). Verify steps: [verify.md](verify.md).
 
 ## Requirements
 
@@ -33,32 +27,18 @@ Jobs are shared (spec 0017), scores and dismissals are per profile. The catalog 
 - **AC-6**: A "Job sources" drawer on `/jobs` lists each source (type, board, company name, jobs linked, last run time and its created/updated counts, or `Never run`), lets you add a board (type `greenhouse` or `lever`, board token, optional company name) which queues an ingestion, and has "Run now" per source. Validation failures (unknown type, rejected board token, company name over 200 chars) show next to the field, from ProblemDetails.
 - **AC-7**: When your profile is incomplete (no skills or no experience, spec 0019 AC-9), a banner on `/jobs` says scores need a complete profile and links to `/profile`.
 - **AC-8**: Loading, empty (no jobs yet, with a button that opens the Job sources drawer; no jobs match the filters, with "Clear filters") and error states render; a failed dismiss shows an error and leaves the row as it was.
-
-## Options considered
-
-### Option 1: Filter on stored columns only (chosen)
-
-Ship the filters the data supports; add the rest when a column exists.
-
-**Pros**: every filter is a plain indexed or cheap predicate; no change to ingestion; nothing guesses.
-**Cons**: experience level, job type and visa filters from the scope wait for later.
-
-### Option 2: Derive more columns during ingestion
-
-Extract job type, seniority and visa wording into `Job` columns at ingestion so every scoped filter works now.
-
-**Pros**: all eleven scoped filters on day one.
-**Cons**: touches ingestion and dedup (spec 0017 hashes and snapshots), duplicates spec 0019's phrase rules in a second place, and makes this feature much larger.
+- **AC-9**: The content of `/jobs`, `/jobs/{id}` and the Job sources drawer works on any device. It is checked at 320, 390, 768, 1024, 1440 and 1920px, in dark and light themes, inside the content area (`.wp-app-shell__main`). Nothing scrolls sideways, no element's right edge passes the content area's right edge, and titles, company names and descriptions are never cut off with an ellipsis. The shell itself (sidebar, TopBar and its actions) belongs to the responsive app shell decision (see Follow-up); together they make the whole app responsive. The narrow rules:
+  - **Below 960px**: the filters fold into a "Filters (n active)" button, closed by default, that opens them above the list on tap; the sort switch sits on the line above the list; the detail page is one column, details first, then the match panel.
+  - **Below 600px**: each row stacks: title, then the score badge and blocker flag, then company, location, remote type, posted and source badges wrapping freely, then Dismiss or Undo. Pagination shows Previous, Next, the current page and its neighbours instead of every page number. The match panel's breakdown is one column, and Rescore and Dismiss run full width. The drawer is full width and full height, source rows stack with Run now below them, and the add form fields stack.
+  - **Long text**: titles, company names, locations, salary, URLs and badges wrap (`overflow-wrap: anywhere`); a preformatted block in the description scrolls inside its own box.
+  - **Touch**: every button, link and form control is at least 24 by 24px at every width (WCAG 2.2 target size; links inside running text are exempt, as 2.5.8 allows), main buttons (filter toggle, Dismiss, Rescore, Run now, the drawer's close and add) are at least 44px tall below 960px, and each checkbox is tappable across its whole label. Nothing needs hover: the exact posted and seen dates show as text on the detail page, so the list's hover tooltip is a convenience only.
+  - **Out of scope**: color contrast (the design tokens own it).
 
 ## Decision
 
 **Chosen option**: Option 1: spec 0019's `GET /internal/matches` extended with filters, sort and dismissal over stored columns, a two column detail page, and a Job sources drawer on `/jobs`.
 
 **Implementation skills**: `ef-core` (`github/awesome-copilot`, `.agents/skills/ef-core/`) · `supabase-postgres-best-practices` (`supabase/agent-skills`, `.agents/skills/supabase-postgres-best-practices/`) · `csharp-xunit` (`github/awesome-copilot`, `.agents/skills/csharp-xunit/`)
-
-## Rationale
-
-The data only supports some of the scoped filters, and a filter that silently matches nothing (job type on a catalog that never stores it) is worse than no filter. Keeping the list on stored columns keeps it fast and honest, and the match score already carries seniority and visa as evidence on the detail page. Extending spec 0019's `GET /internal/matches` (as its follow up asks) keeps one list query instead of two that could disagree on ordering, and leaves spec 0008's `GET /internal/jobs` contract intact. Offset paging with page numbers fits a single user browsing a few thousand rows and makes every view linkable; keyset paging would only pay off at far larger volumes. The sources drawer is small and reuses the existing ingestion use case, and without it the list would be empty in normal use.
 
 ## Feature design
 
@@ -122,6 +102,7 @@ Web (`AddJobsWeb()`, `WorkPilot.Web/Features/Jobs/JobsApiClient.cs`): pages `Wor
 - Sources: adding a Lever board with a bad token shows the field error; "Run now" queues a run and the drawer shows the new last run after it finishes; verifies **AC-6**.
 - Incomplete profile: banner shows, links to `/profile`, and unscored rows say `Complete your profile`; verifies **AC-7**.
 - Validation: `pageSize=500` gives 400 ProblemDetails; verifies **AC-8**.
+- Responsive: at 320, 390, 768, 1024, 1440 and 1920px, in both themes, `.wp-app-shell__main` has `scrollWidth` equal to `clientWidth` and no descendant's right edge passes its right edge, on `/jobs`, `/jobs/{id}` and with the drawer open; verifies **AC-9**.
 - Merge: dismissing a job that later merges keeps it dismissed on the kept job; verifies **Key invariants**.
 
 ## Build plan
@@ -134,6 +115,7 @@ Tracer Bullet: a thin list end to end first, then filters, detail, dismissal and
 4. Dismissal: migration `AddJobsList` (`job_dismissals`, posted index), PUT/DELETE endpoints, merge moves dismissals, row and detail actions, show dismissed toggle. Satisfies **AC-4**.
 5. Sources drawer: sources summary endpoint, run now endpoint, `POST /internal/jobs/ingestions` errors as ProblemDetails, drawer UI. Satisfies **AC-6**.
 6. States and tests: loading, empty, error; Api integration tests (real Postgres) for search, filters, paging, dismissal, merge, sources; bUnit tests for the filter bar and states. Satisfies **AC-1** to **AC-8**.
+7. Responsive: the collapsible filter toggle and sort placement below 960px, the row order, windowed pagination, one column match breakdown and full screen drawer below 600px, `overflow-wrap` on long text, and the 24px and 44px target sizes, all in `jobs.css` and the two pages; bUnit test for the filter toggle's "n active" count. Satisfies **AC-9**.
 
 ## Consequences
 
@@ -145,6 +127,7 @@ Tracer Bullet: a thin list end to end first, then filters, detail, dismissal and
 - Experience level, job type and visa filters from the scope are not built; the match breakdown covers them on the detail page.
 - `ILIKE` contains searches scan; fine at thousands of jobs, needs a trigram index if the catalog grows large.
 - The sources drawer on `/jobs` duplicates a job the Integrations hub (#31) may take over later.
+- AC-9 covers only the content area, so this feature can finish before the shell; the app is fully responsive only once the responsive app shell ships too.
 
 **Neutral**:
 - `POST /internal/jobs/ingestions` moves its bare 400s onto ProblemDetails (spec 0018 convergence for a touched endpoint).
@@ -152,6 +135,7 @@ Tracer Bullet: a thin list end to end first, then filters, detail, dismissal and
 
 ## Follow-up
 
+- [ ] Responsive app shell (scope feature #35, enrolled from this spec; "Mobile layout" left Deferred): decide how navigation works on a phone and tablet (`/architect responsive app shell`). It owns the sidebar, the TopBar and its actions, and the full page check (`document.documentElement.scrollWidth` equals the viewport width) on every page.
 - [ ] Experience level, job type and visa filters read from `job_requirements.Requirements` (spec 0019 extracts `MinYears`, `JobType`, `Sponsorship`).
 - [ ] Save/shortlist and the Prepare application button with #16.
 - [ ] Decisions made without the engineer (please review): dismissals move on merge; "Run now" enqueues by source id (new endpoint) instead of resending the board token; last run data read from the audit log.

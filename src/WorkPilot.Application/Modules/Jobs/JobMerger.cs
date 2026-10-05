@@ -63,6 +63,7 @@ public sealed class JobMerger(
                 var linkIds = other.Links.Select(l => l.Id).ToList();
                 await applications.ReassignJobAsync(other.Id, target.Id, cancellationToken);
                 await repository.ReassignMatchesAsync(other.Id, target.Id, cancellationToken);
+                await repository.ReassignDismissalsAsync(other.Id, target.Id, cancellationToken);
                 target.MergeFrom(other, postings.Of);
                 repository.RemoveJob(other);
                 group.Remove(other);

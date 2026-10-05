@@ -1,0 +1,341 @@
+@page "/jobs/{JobId:guid}"
+@using WorkPilot.Application.Modules.Jobs.Matching
+@using WorkPilot.Contracts.Jobs
+@using WorkPilot.Web.Components.Matching
+@using WorkPilot.Web.Features.Audit
+@using WorkPilot.Web.Features.Common
+@using WorkPilot.Web.Features.Jobs
+@using WorkPilot.Web.Features.Profile
+@implements IDisposable
+@inject IJobsApiClient JobsApi
+@inject BrowserTimeZone TimeZone
+
+<HeadContent>
+    <link rel="stylesheet" href="css/matching.css" />
+    <link rel="stylesheet" href="css/jobs.css" />
+</HeadContent>
+<PageTitle>@(_job?.Title ?? "Job")</PageTitle>
+
+<p class="wp-jobs__back"><a href="/jobs">← All jobs</a></p>
+
+@if (_loading)
+{
+    <p class="wp-match__muted" role="status">Loading the job…</p>
+}
+else if (_notFound)
+{
+    <EmptyState Title="Job not found" Description="This job does not exist, or it was merged into another one. Head back to the list to find it." Icon="🔎" />
+}
+else if (_error is not null)
+{
+    <div class="wp-jobs__error" role="alert">
+        <p>@_error</p>
+        <Button Variant="ButtonVariant.Secondary" Size="ButtonSize.Sm" OnClick="LoadAsync">Retry</Button>
+    </div>
+}
+else if (_job is not null)
+{
+    <div class="wp-jobs__header">
+        <PageHeader Title="@_job.Title" Description="@($"{_job.Company}{(_job.Location is null ? "" : $" · {_job.Location}")}")" />
+        <div class="wp-jobs__actions">
+            @if (JobDisplay.IsWebUrl(_job.SourceUrl))
+            {
+                <a class="wp-jobs__link-button" href="@_job.SourceUrl" target="_blank" rel="noopener noreferrer">View the posting ↗</a>
+            }
+            @if (_job.Dismissed)
+            {
+                <Button Variant="ButtonVariant.Secondary" Disabled="_dismissing" OnClick="() => SetDismissedAsync(false)">Undo dismiss</Button>
+            }
+            else
+            {
+                <Button Variant="ButtonVariant.Secondary" Disabled="_dismissing" OnClick="() => SetDismissedAsync(true)">Dismiss</Button>
+            }
+        </div>
+    </div>
+
+    @if (_job.IsDeleted)
+    {
+        <p class="wp-match__banner" role="status">
+            <strong>No longer listed.</strong> No source shows this job any more; these are its last known details.
+        </p>
+    }
+
+    @if (_job.Dismissed)
+    {
+        <p class="wp-jobs__notice" role="status">You dismissed this job, so it is hidden from your list.</p>
+    }
+
+    @if (_notice is not null)
+    {
+        <p class="wp-match__message" role="status">@_notice</p>
+    }
+
+    @if (_actionError is not null)
+    {
+        <p class="wp-match__error" role="alert">@_actionError</p>
+    }
+
+    <div class="wp-jobs__detail">
+        <div class="wp-jobs__detail-main">
+            <Card Title="Details">
+                <dl class="wp-jobs__facts">
+                    <dt>Company</dt>
+                    <dd>@_job.Company</dd>
+                    <dt>Location</dt>
+                    <dd>@(_job.Location ?? "Not given")</dd>
+                    <dt>Remote</dt>
+                    <dd>@(_job.RemoteType ?? "Not given")</dd>
+                    @if (JobDisplay.Salary(_job.SalaryRangeMin, _job.SalaryRangeMax) is { } salary)
+                    {
+                        <dt>Salary</dt>
+                        <dd>@salary</dd>
+                    }
+                    <dt>Posted</dt>
+                    <dd>@(_job.PostedAt is { } posted ? When(posted) : "Not given")</dd>
+                    <dt>First seen</dt>
+                    <dd>@When(_job.RetrievedAt)</dd>
+                </dl>
+            </Card>
+
+            <Card Title="Description">
+                @if (string.IsNullOrWhiteSpace(_job.Description))
+                {
+                    <p class="wp-match__muted">The source gave no description.</p>
+                }
+                else
+                {
+                    <div class="wp-jobs__description">@_job.Description</div>
+                }
+            </Card>
+
+            <Card Title="Where it was seen">
+                <ul class="wp-jobs__links">
+                    @foreach (var link in _job.Links)
+                    {
+                        <li class="wp-jobs__link" @key="link.Id">
+                            <div class="wp-jobs__link-head">
+                                <Badge Status="StatusKind.Neutral">@JobDisplay.SourceLabel(link.SourceType)</Badge>
+                                @if (link.IsPrimary)
+                                {
+                                    <Badge Status="StatusKind.Info">Primary</Badge>
+                                }
+                                @if (JobDisplay.IsWebUrl(link.SourceUrl))
+                                {
+                                    <a href="@link.SourceUrl" target="_blank" rel="noopener noreferrer">Original posting ↗</a>
+                                }
+                            </div>
+                            <span class="wp-match__muted">First seen @When(link.FirstSeenAt) · last seen @When(link.LastSeenAt)</span>
+                        </li>
+                    }
+                </ul>
+            </Card>
+        </div>
+
+        <div class="wp-jobs__detail-side">
+            @if (_match is not null)
+            {
+                <MatchPanel Match="_match" CanRescore="!_job.IsDeleted" Busy="_rescoring" OnRescore="RescoreAsync" Zone="TimeZone.Current" Now="_now" />
+            }
+            else
+            {
+                <Card Title="Agent analysis">
+                    <p>Not scored yet.</p>
+                    <p class="wp-match__muted">
+                        @(_matchMessage ?? "This job has no match for your profile yet.")
+                        Scores need a profile with skills and experience: <a href="/profile">check your profile</a>.
+                    </p>
+                    @if (!_job.IsDeleted)
+                    {
+                        <Button Variant="ButtonVariant.Secondary" Size="ButtonSize.Sm" Disabled="_rescoring" OnClick="RescoreAsync">@(_rescoring ? "Rescoring…" : "Score this job")</Button>
+                    }
+                </Card>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public Guid JobId { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private readonly CancellationTokenSource _lifetime = new();
+    private CancellationTokenSource _cts = new();
+    private Guid? _profileId;
+    private Guid? _loadedId;
+    private JobDetailView? _job;
+    private JobMatchDetailDto? _match;
+    private string? _matchMessage;
+    private bool _loading = true;
+    private bool _notFound;
+    private bool _rescoring;
+    private bool _dismissing;
+    private string? _error;
+    private string? _notice;
+    private string? _actionError;
+    private DateTimeOffset _now = DateTimeOffset.UtcNow;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            _profileId = ProfileWebExtensions.ProfileId((await AuthState).User);
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedId != JobId)
+        {
+            _loadedId = JobId;
+            await LoadAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !TimeZone.IsKnown)
+        {
+            await TimeZone.GetAsync();
+            if (TimeZone.IsKnown)
+            {
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        var token = Restart();
+        _loading = true;
+        _notFound = false;
+        _error = null;
+        _notice = null;
+        _actionError = null;
+        _job = null;
+        _match = null;
+        if (_profileId is not { } profileId)
+        {
+            _loading = false;
+            _error = "Your session has no profile. Sign out and in again.";
+            return;
+        }
+
+        try
+        {
+            var jobTask = JobsApi.GetJobAsync(JobId, profileId, token);
+            var matchTask = JobsApi.GetMatchAsync(JobId, profileId, token);
+            var job = await jobTask;
+            var match = await matchTask;
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            _now = DateTimeOffset.UtcNow;
+            _job = job.Value;
+            _notFound = job.IsNotFound;
+            _error = _notFound ? null : job.Error;
+            _match = match.Value;
+            _matchMessage = match.Error;
+        }
+        catch (HttpRequestException)
+        {
+            _error = "This job could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        _loading = false;
+    }
+
+    private async Task RescoreAsync()
+    {
+        if (_profileId is not { } profileId)
+        {
+            return;
+        }
+
+        _rescoring = true;
+        try
+        {
+            var result = await JobsApi.RescoreAsync(JobId, profileId, _lifetime.Token);
+            // A failed rescore is shown beside the panel, never in place of it.
+            _notice = result.Succeeded
+                ? result.Value!.Queued ? "Rescore queued. Reload in a moment to see the new score." : "A rescore is already running for this job."
+                : null;
+            _actionError = result.Succeeded ? null : result.Error;
+        }
+        catch (HttpRequestException)
+        {
+            _actionError = "This job could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            // The page was left mid request.
+        }
+        finally
+        {
+            _rescoring = false;
+        }
+    }
+
+    private async Task SetDismissedAsync(bool dismissed)
+    {
+        if (_profileId is not { } profileId || _job is null)
+        {
+            return;
+        }
+
+        _dismissing = true;
+        _actionError = null;
+        try
+        {
+            var result = dismissed
+                ? await JobsApi.DismissAsync(JobId, profileId, _lifetime.Token)
+                : await JobsApi.UndoDismissAsync(JobId, profileId, _lifetime.Token);
+            if (result.Succeeded)
+            {
+                _job = _job with { Dismissed = dismissed };
+            }
+            else
+            {
+                _actionError = result.Error;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _actionError = "This job could not be reached. Try again in a moment.";
+        }
+        catch (OperationCanceledException)
+        {
+            // The page was left mid request.
+        }
+        finally
+        {
+            _dismissing = false;
+        }
+    }
+
+    // Exact as well as relative, as text: on a touch screen there is no hover tooltip to read it from (AC-9).
+    private string When(DateTimeOffset at) =>
+        $"{ActivitySummaries.Exact(at, TimeZone.Current)}, {ActivitySummaries.Relative(at, _now, TimeZone.Current)}";
+
+    private CancellationToken Restart()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        _cts = new CancellationTokenSource();
+        return _cts.Token;
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _lifetime.Cancel();
+    }
+}

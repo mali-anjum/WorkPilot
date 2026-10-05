@@ -1,20 +1,5 @@
 namespace WorkPilot.Application.Modules.Jobs.Matching;
 
-/// <summary>One row of <c>GET /internal/matches</c> (spec 0019, AC-9).</summary>
-public sealed record MatchListItemDto(
-    Guid JobId,
-    string Title,
-    string Company,
-    string? Location,
-    int? Score,
-    string? Confidence,
-    bool HasBlocker,
-    DateTimeOffset? RankedAt);
-
-/// <summary>One page of <c>GET /internal/matches</c>.</summary>
-/// <param name="ProfileIncomplete">True when the profile has no skills or no experience rows.</param>
-public sealed record MatchListDto(IReadOnlyList<MatchListItemDto> Items, int Total, int Page, int PageSize, bool ProfileIncomplete);
-
 /// <summary>The match panel of <c>GET /internal/jobs/{jobId}/match</c> (spec 0019, AC-10).</summary>
 public sealed record JobMatchDetailDto(
     Guid JobId,

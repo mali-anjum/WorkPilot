@@ -13,6 +13,7 @@ using WorkPilot.AI.Providers;
 using WorkPilot.Application.Modules.Jobs;
 using WorkPilot.Application.Modules.Jobs.Matching;
 using WorkPilot.Application.Modules.Profile.MatchProfile;
+using WorkPilot.Contracts.Jobs;
 using WorkPilot.Domain.Modules.Jobs;
 using WorkPilot.Domain.Modules.Jobs.Matching;
 using WorkPilot.Domain.Modules.Profile;
@@ -547,7 +548,7 @@ public class JobMatchingTests(SharedApiFactory factory) : IAsyncLifetime
         }
 
         using var client = factory.CreateClient();
-        var all = new List<MatchListItemDto>();
+        var all = new List<JobListItemDto>();
         MatchListDto page;
         var number = 1;
         do

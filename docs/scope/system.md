@@ -21,3 +21,8 @@ Ctrl+K palette with the action list from the product spec (find jobs, create app
 Welcome -> Goals -> Profile -> Resume -> Job preferences -> Research interests -> Gmail -> Calendar -> Automation policy -> Ready. Default automation policy is approval-based.
 **Done when:** a fresh account can complete onboarding and land with a usable profile, at least one resume, and an explicit automation policy choice recorded.
 - [ ] Design it (spec): `/develop onboarding flow`
+
+### 35. Responsive app shell · needs a decision
+The shell (sidebar, TopBar and its actions) works on any device, from a 320px phone to a wide desktop: navigation collapses on small screens and no page scrolls sideways. From spec 0021 (its AC-9 covers the jobs page content; this covers the shell every page shares).
+**Done when:** at 320, 390, 768, 1024, 1440 and 1920px, in both themes, every page has `document.documentElement.scrollWidth` equal to the viewport width and all navigation is reachable by tap.
+- [ ] Design it (spec): `/architect responsive app shell`

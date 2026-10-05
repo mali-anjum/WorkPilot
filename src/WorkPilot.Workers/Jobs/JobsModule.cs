@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using WorkPilot.AI.Matching;
+using WorkPilot.Application.Modules.Jobs;
 using WorkPilot.Application.Modules.Jobs.Matching;
 using WorkPilot.Domain.Modules.Jobs;
 using WorkPilot.Domain.Modules.Jobs.Matching;
@@ -14,7 +15,7 @@ using WorkPilot.Workers.Common;
 
 namespace WorkPilot.Workers.Jobs;
 
-/// <summary>The Jobs module: job source ingestion, deduplication and matching (specs 0008, 0017, 0019).</summary>
+/// <summary>The Jobs module: job source ingestion, deduplication, matching, and the jobs list reads and dismissals (specs 0008, 0017, 0019, 0021).</summary>
 public static class JobsModule
 {
     /// <summary>
@@ -35,6 +36,9 @@ public static class JobsModule
         services.AddSingleton(sp => sp.GetRequiredService<IOptions<MatchingSettings>>().Value);
         services.AddScoped<IMatchRepository, MatchRepository>();
         services.AddScoped<IMatchQueries, MatchQueries>();
+        services.AddScoped<IJobCatalogQueries, JobCatalogQueries>();
+        services.AddScoped<IJobDismissalRepository, JobDismissalRepository>();
+        services.AddScoped<JobDismissalService>();
         services.AddScoped<IJobRequirementExtractor, ChatClientJobRequirementExtractor>();
         services.AddScoped<IMatchJobScheduler, HangfireMatchJobScheduler>();
         services.AddScoped<JobMatchingService>();

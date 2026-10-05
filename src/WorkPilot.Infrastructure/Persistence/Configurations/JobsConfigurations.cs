@@ -37,6 +37,9 @@ public class JobConfiguration : IEntityTypeConfiguration<Job>
         builder.Property(e => e.DedupRuleVersion).HasDefaultValue(0);
         builder.HasIndex(e => e.DedupKey);
 
+        // The Newest sort of the jobs list (spec 0021, AC-1).
+        builder.HasIndex(e => e.PostedAt).IsDescending().HasFilter("\"IsDeleted\" = false").HasDatabaseName("IX_jobs_PostedAt_listed");
+
         // PrimaryLinkId is a foreign key to job_source_links, but it is added by
         // hand in AddJobDeduplication as DEFERRABLE INITIALLY DEFERRED: a new job
         // and its first link point at each other, a cycle EF Core can't order
@@ -134,5 +137,18 @@ public class JobRequirementConfiguration : IEntityTypeConfiguration<JobRequireme
         builder.Property(e => e.Requirements).HasColumnType("jsonb");
         builder.Property(e => e.Model).HasMaxLength(200);
         builder.Property(e => e.FailureReason).HasMaxLength(JobRequirement.MaxFailureReasonLength);
+    }
+}
+
+public class JobDismissalConfiguration : IEntityTypeConfiguration<JobDismissal>
+{
+    public void Configure(EntityTypeBuilder<JobDismissal> builder)
+    {
+        // One dismissal per (profile, job) (spec 0021); only the Jobs module writes it.
+        builder.ToTable("job_dismissals");
+        builder.HasKey(e => new { e.ProfileId, e.JobId });
+        builder.HasIndex(e => e.JobId);
+        builder.HasOne<Profile>().WithMany().HasForeignKey(e => e.ProfileId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Job>().WithMany().HasForeignKey(e => e.JobId).OnDelete(DeleteBehavior.Cascade);
     }
 }
