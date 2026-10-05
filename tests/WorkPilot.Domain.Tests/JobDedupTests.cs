@@ -18,6 +18,17 @@ public class JobDedupTests
     [InlineData("Acme Co Ltd", "acme co")]
     [InlineData("Co", "co")]
     [InlineData("  Acme Labs!  ", "acme labs")]
+    // covers: spec 0017 AC-3 (every legal suffix the spec names)
+    [InlineData("Acme LLC", "acme")]
+    [InlineData("Acme Ltd.", "acme")]
+    [InlineData("Acme Limited", "acme")]
+    [InlineData("Acme AG", "acme")]
+    [InlineData("Acme S.A.", "acme")]
+    [InlineData("Acme B.V.", "acme")]
+    [InlineData("Acme PLC", "acme")]
+    [InlineData("Acme Corp.", "acme")]
+    [InlineData("Acme Corporation", "acme")]
+    [InlineData("Acme Co.", "acme")]
     public void NormalizeCompany_DropsCasePunctuationAndOneTrailingLegalSuffix(string company, string expected)
     {
         // covers AC-3 (a lone suffix word is the name itself, so it stays)

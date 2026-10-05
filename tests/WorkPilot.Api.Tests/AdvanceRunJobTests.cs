@@ -255,6 +255,31 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
         }
     }
 
+    // covers: spec 0005 AC-3 (the tool said it worked, but its output misses a declared field)
+    [Fact]
+    public async Task RunAsync_WhenTheOutputFailsVerification_FailsTheStepAndTheRunWithAFailedToolCall()
+    {
+        var tool = new ScriptedTool("unverified_output", isIdempotent: true, maxRetries: 0, ScriptedTool.Behavior.AlwaysSucceed,
+            outputJson: """{"name":"Test Founder"}""", expectedOutputFields: ["name", "email"]);
+        var (db, job) = CreateJob(tool);
+        var (run, step, profileId) = await SeedPendingRunAsync(db, tool.Name);
+
+        try
+        {
+            await job.RunAsync(run.Id);
+
+            await using var verifyDb = CreateDbContext();
+            Assert.Equal(AgentStepStatus.Failed, (await verifyDb.AgentSteps.SingleAsync(s => s.Id == step.Id)).Status);
+            Assert.Equal(AgentRunStatus.Failed, (await verifyDb.AgentRuns.SingleAsync(r => r.Id == run.Id)).Status);
+            Assert.False((await verifyDb.ToolCalls.SingleAsync(c => c.AgentStepId == step.Id)).Success);
+            Assert.Equal(1, tool.AttemptCount);
+        }
+        finally
+        {
+            await CleanupAsync(profileId);
+        }
+    }
+
     [Fact]
     public async Task RunAsync_WhenTheToolSucceedsWithNoOutput_AuditsANullPayload()
     {
@@ -796,14 +821,15 @@ public class AdvanceRunJobTests(SharedApiFactory factory)
         ScriptedTool.Behavior behavior,
         string? outputJson = null,
         string failureMessage = "scripted failure",
-        ToolRiskTier riskTier = ToolRiskTier.AutoAllowed) : ITool
+        ToolRiskTier riskTier = ToolRiskTier.AutoAllowed,
+        IReadOnlyList<string>? expectedOutputFields = null) : ITool
     {
         public enum Behavior { AlwaysSucceed, AlwaysFail }
 
         public string Name { get; } = name;
         public string Description => "test tool";
         public IReadOnlyList<string> RequiredArguments => [];
-        public IReadOnlyList<string> ExpectedOutputFields => [];
+        public IReadOnlyList<string> ExpectedOutputFields { get; } = expectedOutputFields ?? [];
         public ToolRiskTier RiskTier { get; } = riskTier;
         public bool IsIdempotent { get; } = isIdempotent;
         public TimeSpan Timeout => TimeSpan.FromSeconds(5);

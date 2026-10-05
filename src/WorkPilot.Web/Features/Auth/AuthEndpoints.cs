@@ -104,7 +104,12 @@ public static class AuthEndpoints
                 new(ClaimProfileId, resolved.ProfileId.ToString()),
             };
             var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-            await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+            // Persistent, so the cookie carries the scheme's 30 day sliding expiry and
+            // survives a browser restart; without it the cookie dies with the browser (spec 0004, AC-3).
+            await ctx.SignInAsync(
+                CookieAuthenticationDefaults.AuthenticationScheme,
+                new ClaimsPrincipal(identity),
+                new AuthenticationProperties { IsPersistent = true });
 
             return Results.Redirect(SafeLocalRedirectTarget(returnUrl));
         });
