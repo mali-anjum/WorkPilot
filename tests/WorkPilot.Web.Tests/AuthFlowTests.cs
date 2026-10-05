@@ -77,9 +77,7 @@ public sealed partial class AuthFlowTests : IClassFixture<AuthFlowTests.WebFacto
     }
 
     // covers: spec 0004 AC-3 (a browser restart drops a cookie without an expiry, so the session must carry one)
-    [Fact(Skip = "Known defect found by the 2026-10-04 test audit: POST /login signs in without " +
-        "AuthenticationProperties.IsPersistent, so the session cookie has no expiry and a browser restart ends it. " +
-        "Remove this Skip once /debug fixes it.")]
+    [Fact]
     public async Task The_session_cookie_outlives_a_browser_restart_for_30_days()
     {
         using var client = NewClient();
