@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using WorkPilot.Application.Common;
 using WorkPilot.Application.Modules.Jobs;
 using WorkPilot.Contracts.Jobs;
 using WorkPilot.Domain.Modules.Jobs;
@@ -259,6 +260,32 @@ public class JobsListTests(SharedApiFactory factory) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NotFound, (await client.PutAsJsonAsync($"/internal/jobs/{jobId}/dismissal", new DismissJobRequest(Guid.CreateVersion7()))).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.DeleteAsync($"/internal/jobs/{Guid.CreateVersion7()}/dismissal?profileId={profileId}")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await client.DeleteAsync($"/internal/jobs/{jobId}/dismissal")).StatusCode);
+    }
+
+    // covers: spec 0021 AC-4 (review finding: a merge removing the job after the existence check is a 404, not a 500)
+    [Fact]
+    public async Task Dismissing_a_job_a_merge_removed_after_the_check_is_a_404()
+    {
+        var profileId = await SeedProfileAsync();
+        await using var db = CreateDbContext();
+        // The job "existed" when checked, then a merge deleted it before the insert ran.
+        var service = new JobDismissalService(new ExistedWhenChecked(new JobDismissalRepository(db)), TimeProvider.System);
+
+        var result = await service.DismissAsync(Guid.CreateVersion7(), profileId, CancellationToken.None);
+
+        Assert.Equal(ResultStatus.NotFound, result.Status);
+        Assert.False(await db.JobDismissals.AnyAsync(d => d.ProfileId == profileId));
+    }
+
+    private sealed class ExistedWhenChecked(IJobDismissalRepository inner) : IJobDismissalRepository
+    {
+        public Task<bool> JobExistsAsync(Guid jobId, CancellationToken cancellationToken) => Task.FromResult(true);
+
+        public Task<bool> ProfileExistsAsync(Guid profileId, CancellationToken cancellationToken) => inner.ProfileExistsAsync(profileId, cancellationToken);
+
+        public Task<bool> AddAsync(JobDismissal dismissal, CancellationToken cancellationToken) => inner.AddAsync(dismissal, cancellationToken);
+
+        public Task RemoveAsync(Guid profileId, Guid jobId, CancellationToken cancellationToken) => inner.RemoveAsync(profileId, jobId, cancellationToken);
     }
 
     // covers: Key invariants (a dismissal follows its job through a merge)

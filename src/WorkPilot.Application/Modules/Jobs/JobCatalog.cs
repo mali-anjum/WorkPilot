@@ -29,8 +29,11 @@ public interface IJobDismissalRepository
     /// <summary>Whether the profile exists.</summary>
     Task<bool> ProfileExistsAsync(Guid profileId, CancellationToken cancellationToken);
 
-    /// <summary>Inserts the dismissal unless that (profile, job) already has one; runs immediately.</summary>
-    Task AddAsync(JobDismissal dismissal, CancellationToken cancellationToken);
+    /// <summary>
+    /// Inserts the dismissal unless that (profile, job) already has one; runs immediately.
+    /// False when the job was removed (a merge) after the caller checked it exists.
+    /// </summary>
+    Task<bool> AddAsync(JobDismissal dismissal, CancellationToken cancellationToken);
 
     /// <summary>Deletes the (profile, job) dismissal, if there is one; runs immediately.</summary>
     Task RemoveAsync(Guid profileId, Guid jobId, CancellationToken cancellationToken);
@@ -47,8 +50,9 @@ public sealed class JobDismissalService(IJobDismissalRepository repository, Time
             return missing;
         }
 
-        await repository.AddAsync(JobDismissal.Create(profileId, jobId, time.GetUtcNow()), cancellationToken);
-        return Result<bool>.Ok(true);
+        return await repository.AddAsync(JobDismissal.Create(profileId, jobId, time.GetUtcNow()), cancellationToken)
+            ? Result<bool>.Ok(true)
+            : Result<bool>.NotFound("That job does not exist.");
     }
 
     /// <summary>Shows the job again; fine when it was not dismissed. 404 for an unknown job or profile.</summary>

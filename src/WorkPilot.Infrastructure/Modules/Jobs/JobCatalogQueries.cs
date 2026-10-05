@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using WorkPilot.Application.Modules.Jobs;
 using WorkPilot.Contracts.Jobs;
 using WorkPilot.Domain.Modules.Jobs;
@@ -152,15 +153,26 @@ public sealed class JobDismissalRepository(WorkPilotDbContext db) : IJobDismissa
         db.Profiles.AnyAsync(p => p.Id == profileId, cancellationToken);
 
     /// <inheritdoc />
-    public Task AddAsync(JobDismissal dismissal, CancellationToken cancellationToken) =>
-        // ON CONFLICT keeps the first dismissal, so two racing requests both succeed (AC-4).
-        db.Database.ExecuteSqlAsync(
-            $"""
-            INSERT INTO app.job_dismissals ("ProfileId", "JobId", "DismissedAt")
-            VALUES ({dismissal.ProfileId}, {dismissal.JobId}, {dismissal.DismissedAt})
-            ON CONFLICT ("ProfileId", "JobId") DO NOTHING
-            """,
-            cancellationToken);
+    public async Task<bool> AddAsync(JobDismissal dismissal, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // ON CONFLICT keeps the first dismissal, so two racing requests both succeed (AC-4).
+            await db.Database.ExecuteSqlAsync(
+                $"""
+                INSERT INTO app.job_dismissals ("ProfileId", "JobId", "DismissedAt")
+                VALUES ({dismissal.ProfileId}, {dismissal.JobId}, {dismissal.DismissedAt})
+                ON CONFLICT ("ProfileId", "JobId") DO NOTHING
+                """,
+                cancellationToken);
+            return true;
+        }
+        catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+        {
+            // A merge removed the job between the existence check and this insert.
+            return false;
+        }
+    }
 
     /// <inheritdoc />
     public Task RemoveAsync(Guid profileId, Guid jobId, CancellationToken cancellationToken) =>
